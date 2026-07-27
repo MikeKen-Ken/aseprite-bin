@@ -8,8 +8,8 @@ on:
         description: "Version to build, leave empty for latest"
         required: false
   schedule:
-    # 09:17 every day in China Standard Time (UTC+8).
-    - cron: "17 1 * * *"
+    # Approximately every three days at 09:17 China Standard Time (UTC+8).
+    - cron: "17 1 */3 * *"
 
 permissions:
   contents: write
