@@ -31,6 +31,27 @@ See list of available Aseprite versions [here][versions].
 
 For building newer aseprite version repeat steps 3 to 5.
 
+## Automatic stable builds
+
+The workflow checks Aseprite's latest stable GitHub Release approximately every
+three days at 01:17 UTC (09:17 China Standard Time). Beta, release-candidate,
+prerelease, and draft releases are ignored.
+
+When the stable version is newer than `.github/last-built-version.txt`, the
+workflow builds it, uploads the result as a GitHub Actions artifact, and records
+the version only after a successful build. If the version has not changed, the
+scheduled run finishes without rebuilding.
+
+Manual runs continue to work as before:
+
+- Specify a tag such as `v1.3.18.1` to build that exact version.
+- Leave the version empty to build the latest stable release again.
+
+Artifacts are intended for the person who compiled them. Do not publish the
+compiled binaries as public GitHub Releases; Aseprite's license limits source
+compilation to personal use and prohibits distributing software copies to third
+parties.
+
 [Aseprite]: https://github.com/aseprite/aseprite
 [versions]: https://github.com/aseprite/aseprite/tags
 [download page]: https://www.aseprite.org/download/
