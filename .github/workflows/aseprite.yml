@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  ASEPRITE_PACKAGE_REVISION: "2"
+  ASEPRITE_PACKAGE_REVISION: "3"
 
 jobs:
   build:

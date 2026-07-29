@@ -130,7 +130,7 @@ xcopy /E /Q /Y aseprite\docs aseprite-%ASEPRITE_VERSION%\docs\
 xcopy /E /Q /Y build\bin\aseprite.exe aseprite-%ASEPRITE_VERSION%\
 xcopy /E /Q /Y build\bin\data aseprite-%ASEPRITE_VERSION%\data\
 
-if "%ASEPRITE_PACKAGE_REVISION%" equ "" set ASEPRITE_PACKAGE_REVISION=2
+if "%ASEPRITE_PACKAGE_REVISION%" equ "" set ASEPRITE_PACKAGE_REVISION=3
 if "%ASEPRITE_UPDATE_REPOSITORY%" equ "" set ASEPRITE_UPDATE_REPOSITORY=MikeKen-Ken/aseprite-bin
 
 pwsh.exe -NoLogo -NoProfile -File scripts\Integrate-ChineseDefaults.ps1 ^

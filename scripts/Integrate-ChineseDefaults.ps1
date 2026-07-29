@@ -15,7 +15,7 @@ param(
   [string]$ThemeArchivePath = "",
   [string]$GitHubToken = $env:GH_TOKEN,
   [ValidateRange(1, 2147483647)]
-  [int]$PackageRevision = 2,
+  [int]$PackageRevision = 3,
   [string]$UpdateRepository = "MikeKen-Ken/aseprite-bin"
 )
 
@@ -192,9 +192,18 @@ selected = $selectedTheme
   Copy-Item `
     -LiteralPath (Join-Path $RepositoryRoot "scripts/cleanup-update-source.ps1") `
     -Destination (Join-Path $OutputDirectory "cleanup-update-source.ps1")
-  Copy-Item `
-    -LiteralPath (Join-Path $RepositoryRoot "scripts/Invoke-AsepriteUpdate.ps1") `
-    -Destination (Join-Path $OutputDirectory "Invoke-AsepriteUpdate.ps1")
+  $updaterHelperSource =
+    Join-Path $RepositoryRoot "scripts/Invoke-AsepriteUpdate.ps1"
+  $updaterHelperDestination =
+    Join-Path $OutputDirectory "Invoke-AsepriteUpdate.ps1"
+  $updaterHelperText = Get-Content `
+    -Raw `
+    -Encoding UTF8 `
+    -LiteralPath $updaterHelperSource
+  [System.IO.File]::WriteAllText(
+    $updaterHelperDestination,
+    $updaterHelperText,
+    [System.Text.UTF8Encoding]::new($true))
 
   $releaseLabel = $releaseTag.TrimStart("v")
   $artifactName = "aseprite-$AsepriteVersion-zh-$releaseLabel-boutique"
