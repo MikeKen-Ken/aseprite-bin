@@ -14,11 +14,16 @@ param(
   [string]$StagingSource = "",
   [string]$ManifestUri = "",
   [string]$ArtifactArchivePath = "",
+  [string]$RequestId = "",
   [switch]$NoRestart
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+$script:CheckTimeoutSec = 20
+$script:DownloadTimeoutSec = 300
+$script:GhTimeoutSec = 15
 
 function Get-NormalizedDirectory([string]$Path) {
   return [System.IO.Path]::GetFullPath($Path).TrimEnd(
@@ -45,10 +50,50 @@ function Write-UpdateResult([string]$Status, [hashtable]$Data = @{}) {
     status = $Status
     timestamp = [DateTimeOffset]::UtcNow.ToString("o")
   }
+  if ($RequestId) {
+    $result.requestId = $RequestId
+  }
   foreach ($key in $Data.Keys) {
     $result[$key] = $Data[$key]
   }
   Write-JsonFile $ResultPath $result
+}
+
+function Invoke-ExternalWithTimeout {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$FilePath,
+    [string[]]$ArgumentList = @(),
+    [Parameter(Mandatory = $true)]
+    [int]$TimeoutSeconds,
+    [string]$TimeoutMessage = "外部命令执行超时"
+  )
+
+  $stdoutPath = [System.IO.Path]::GetTempFileName()
+  $stderrPath = [System.IO.Path]::GetTempFileName()
+  try {
+    $process = Start-Process `
+      -FilePath $FilePath `
+      -ArgumentList $ArgumentList `
+      -NoNewWindow `
+      -PassThru `
+      -RedirectStandardOutput $stdoutPath `
+      -RedirectStandardError $stderrPath
+    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+      try { $process.Kill() } catch { }
+      throw $TimeoutMessage
+    }
+    $stdout = (Get-Content -Raw -LiteralPath $stdoutPath -ErrorAction SilentlyContinue)
+    $stderr = (Get-Content -Raw -LiteralPath $stderrPath -ErrorAction SilentlyContinue)
+    return [pscustomobject]@{
+      ExitCode = $process.ExitCode
+      StandardOutput = if ($null -eq $stdout) { "" } else { $stdout }
+      StandardError = if ($null -eq $stderr) { "" } else { $stderr }
+    }
+  }
+  finally {
+    Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+  }
 }
 
 function Get-UpdateManifest {
@@ -70,7 +115,10 @@ function Get-UpdateManifest {
       "User-Agent" = "MikeKen-Ken-aseprite-bin-updater"
       "Cache-Control" = "no-cache"
     }
-    $manifest = Invoke-RestMethod -Headers $headers -Uri $uri
+    $manifest = Invoke-RestMethod `
+      -Headers $headers `
+      -Uri $uri `
+      -TimeoutSec $script:CheckTimeoutSec
   }
   if ([int]$manifest.schemaVersion -ne 1 -or [string]$manifest.status -ne "published") {
     throw "更新清单尚未发布，请稍后再试"
@@ -154,11 +202,25 @@ function Get-GitHubToken {
   if (-not $gh) {
     return $null
   }
-  & $gh.Source auth status --hostname github.com 1>$null 2>$null
-  if ($LASTEXITCODE -ne 0) {
+
+  $status = Invoke-ExternalWithTimeout `
+    -FilePath $gh.Source `
+    -ArgumentList @("auth", "status", "--hostname", "github.com") `
+    -TimeoutSeconds $script:GhTimeoutSec `
+    -TimeoutMessage "检查 GitHub CLI 登录状态超时"
+  if ($status.ExitCode -ne 0) {
     return $null
   }
-  $token = (& $gh.Source auth token --hostname github.com 2>$null | Out-String).Trim()
+
+  $tokenResult = Invoke-ExternalWithTimeout `
+    -FilePath $gh.Source `
+    -ArgumentList @("auth", "token", "--hostname", "github.com") `
+    -TimeoutSeconds $script:GhTimeoutSec `
+    -TimeoutMessage "读取 GitHub CLI 令牌超时"
+  if ($tokenResult.ExitCode -ne 0) {
+    return $null
+  }
+  $token = $tokenResult.StandardOutput.Trim()
   if (-not $token) {
     return $null
   }
@@ -166,7 +228,6 @@ function Get-GitHubToken {
 }
 
 function Invoke-Download($Manifest) {
-  Write-UpdateResult "downloading" @{ manifest = $Manifest }
   $stagingRoot = Join-Path (
     [System.IO.Path]::GetTempPath()) (
     "aseprite-bin-update-" + [Guid]::NewGuid().ToString("N"))
@@ -176,9 +237,11 @@ function Invoke-Download($Manifest) {
 
   try {
     if ($ArtifactArchivePath) {
+      Write-UpdateResult "downloading" @{ manifest = $Manifest }
       Copy-Item -LiteralPath $ArtifactArchivePath -Destination $archivePath
     }
     else {
+      Write-UpdateResult "authenticating" @{ manifest = $Manifest }
       $token = Get-GitHubToken
       if (-not $token) {
         Write-UpdateResult "auth-required" @{
@@ -188,6 +251,8 @@ function Invoke-Download($Manifest) {
         Remove-Item -LiteralPath $stagingRoot -Recurse -Force
         return
       }
+
+      Write-UpdateResult "downloading" @{ manifest = $Manifest }
       $uri =
         "https://api.github.com/repos/$Repository/actions/artifacts/" +
         "$([string]$Manifest.artifactId)/zip"
@@ -201,15 +266,18 @@ function Invoke-Download($Manifest) {
         -UseBasicParsing `
         -Headers $headers `
         -Uri $uri `
-        -OutFile $archivePath
+        -OutFile $archivePath `
+        -TimeoutSec $script:DownloadTimeoutSec
     }
 
+    Write-UpdateResult "verifying" @{ manifest = $Manifest }
     $expectedDigest = ([string]$Manifest.artifactDigest) -replace '^sha256:', ''
     $actualDigest = (Get-FileHash -Algorithm SHA256 -LiteralPath $archivePath).Hash
     if ($actualDigest -ne $expectedDigest) {
       throw "构建产物的 SHA-256 完整性校验失败"
     }
 
+    Write-UpdateResult "extracting" @{ manifest = $Manifest }
     Expand-ZipSafely $archivePath $extractPath
     $candidates = @(
       Get-ChildItem -LiteralPath $extractPath -Filter "build-info.json" -Recurse -File |
@@ -347,6 +415,7 @@ try {
       }
     }
     "Download" {
+      Write-UpdateResult "checking"
       $manifest = Get-UpdateManifest
       $localBuild = Get-LocalBuildInfo
       if (-not (Test-UpdateAvailable $manifest $localBuild)) {

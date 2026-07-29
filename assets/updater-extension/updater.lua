@@ -1,6 +1,7 @@
 local CHECK_INTERVAL_SECONDS = 24 * 60 * 60
 local RESULT_FILE_NAME = "aseprite-bin-updater-result.json"
 local HELPER_TIMEOUT_TICKS = 1200
+local CHECK_TIMEOUT_TICKS = 120
 
 local updaterPlugin = nil
 local buildInfo = nil
@@ -9,6 +10,19 @@ local resultPath = nil
 local pollTimer = nil
 local startupTimer = nil
 local activeDialog = nil
+local activeOperation = nil
+local activeRequestId = nil
+local pollCancelled = false
+
+local STATUS_LABELS = {
+  starting = "正在启动更新程序…",
+  checking = "正在检查更新清单…",
+  authenticating = "正在验证 GitHub 登录…",
+  downloading = "正在下载构建产物…",
+  verifying = "正在校验并解压产物…",
+  extracting = "正在解压产物…",
+  ["waiting-for-exit"] = "等待 Aseprite 退出以完成安装…"
+}
 
 local function readJsonFile(path)
   local file = io.open(path, "rb")
@@ -39,10 +53,53 @@ local function helperPath()
   return app.fs.joinPath(installationDirectory, "Invoke-AsepriteUpdate.ps1")
 end
 
+local function newRequestId()
+  return string.format("%d-%d", os.time(), math.random(100000, 999999))
+end
+
+local function clearActiveOperation()
+  activeOperation = nil
+  activeRequestId = nil
+  pollCancelled = false
+end
+
+local function stopPolling()
+  if pollTimer then
+    pollTimer:stop()
+    pollTimer = nil
+  end
+end
+
+local function cancelActiveOperation()
+  if not activeOperation then
+    return
+  end
+  pollCancelled = true
+  stopPolling()
+  clearActiveOperation()
+  closeActiveDialog()
+  app.tip("已取消更新操作。后台任务如仍在运行，结果将被忽略。", 4)
+end
+
+local function updateStatusLabel(status)
+  if not activeDialog or not status then
+    return
+  end
+  local text = STATUS_LABELS[status]
+  if text then
+    pcall(function()
+      activeDialog:modify{ id = "status", text = text }
+    end)
+  end
+end
+
+-- Launch PowerShell detached via cmd's start builtin so os.execute returns
+-- immediately and does not freeze the Aseprite UI during network I/O.
 local function launchHelper(mode, stagingSource)
   os.remove(resultPath)
+  activeRequestId = newRequestId()
   local command = table.concat({
-    'start "" /b powershell.exe',
+    'cmd.exe /c start "" /b powershell.exe',
     "-NoLogo",
     "-NoProfile",
     "-NonInteractive",
@@ -53,29 +110,31 @@ local function launchHelper(mode, stagingSource)
     "-InstallationDirectory", quoteCommandArgument(installationDirectory),
     "-ResultPath", quoteCommandArgument(resultPath),
     "-Repository", quoteCommandArgument(buildInfo.update.repository),
+    "-RequestId", quoteCommandArgument(activeRequestId),
     stagingSource and ("-StagingSource " .. quoteCommandArgument(stagingSource)) or ""
   }, " ")
   local ok = os.execute(command)
   return ok == true or ok == 0
 end
 
-local function stopPolling()
-  if pollTimer then
-    pollTimer:stop()
-    pollTimer = nil
-  end
-end
-
 local function pollForResult(operation, onComplete)
   stopPolling()
+  pollCancelled = false
   local pollTicks = 0
-  local timeoutTicks = operation == "Check" and 120 or HELPER_TIMEOUT_TICKS
+  local timeoutTicks = operation == "Check" and CHECK_TIMEOUT_TICKS or HELPER_TIMEOUT_TICKS
+  local requestId = activeRequestId
   pollTimer = Timer{
     interval = 0.5,
     ontick = function()
+      if pollCancelled or requestId ~= activeRequestId then
+        stopPolling()
+        return
+      end
+
       pollTicks = pollTicks + 1
       if pollTicks >= timeoutTicks then
         stopPolling()
+        clearActiveOperation()
         onComplete{
           status = "error",
           message = "更新程序等待超时，请稍后重试。"
@@ -87,12 +146,23 @@ local function pollForResult(operation, onComplete)
       if not result or result.operation ~= operation then
         return
       end
-      if result.status == "checking" or
-         result.status == "downloading" or
-         result.status == "waiting-for-exit" then
+      if result.requestId and result.requestId ~= requestId then
         return
       end
+
+      if result.status == "starting" or
+         result.status == "checking" or
+         result.status == "authenticating" or
+         result.status == "downloading" or
+         result.status == "verifying" or
+         result.status == "extracting" or
+         result.status == "waiting-for-exit" then
+        updateStatusLabel(result.status)
+        return
+      end
+
       stopPolling()
+      clearActiveOperation()
       onComplete(result)
     end
   }
@@ -108,6 +178,14 @@ local function showError(message)
   }
 end
 
+local function showBusyAlert()
+  app.alert{
+    title = "中文增强版更新",
+    text = "正在检查或下载更新，请稍候再试。",
+    buttons = "确定"
+  }
+end
+
 local function hasModifiedSprites()
   for _, sprite in ipairs(app.sprites) do
     if sprite.isModified then
@@ -115,6 +193,29 @@ local function hasModifiedSprites()
     end
   end
   return false
+end
+
+local function showProgressDialog(title, statusText, hintText)
+  closeActiveDialog()
+  activeDialog = Dialog{
+    title = title,
+    resizeable = false
+  }
+  activeDialog
+    :label{
+      id = "status",
+      text = statusText
+    }
+    :label{
+      id = "hint",
+      text = hintText
+    }
+    :button{
+      id = "cancel",
+      text = "取消",
+      onclick = cancelActiveOperation
+    }
+    :show{ wait = false }
 end
 
 local function startApply(stagingSource)
@@ -128,7 +229,9 @@ local function startApply(stagingSource)
   end
 
   closeActiveDialog()
+  activeOperation = "Apply"
   if not launchHelper("Apply", stagingSource) then
+    clearActiveOperation()
     showError("无法启动更新程序，请检查 PowerShell 是否可用。")
     return
   end
@@ -167,24 +270,23 @@ local function showReadyToInstall(result)
 end
 
 local function startDownload()
-  closeActiveDialog()
-  activeDialog = Dialog{
-    title = "正在下载更新",
-    resizeable = false
-  }
-  activeDialog
-    :label{
-      text = "正在从你的 GitHub Actions 下载并校验最新产物…"
-    }
-    :label{
-      text = "下载期间可以继续使用 Aseprite。"
-    }
-    :show{ wait = false }
+  if activeOperation then
+    showBusyAlert()
+    return
+  end
 
+  showProgressDialog(
+    "正在下载更新",
+    STATUS_LABELS.starting,
+    "下载期间可以继续使用 Aseprite。")
+
+  activeOperation = "Download"
   if not launchHelper("Download") then
+    clearActiveOperation()
     showError("无法启动下载程序，请检查 PowerShell 是否可用。")
     return
   end
+  updateStatusLabel("checking")
   pollForResult("Download", function(result)
     if result.status == "downloaded" then
       showReadyToInstall(result)
@@ -238,6 +340,13 @@ local function showUpdateAvailable(result)
 end
 
 local function startCheck(manual)
+  if activeOperation then
+    if manual then
+      showBusyAlert()
+    end
+    return
+  end
+
   if not buildInfo or not buildInfo.update or not buildInfo.update.repository then
     if manual then
       showError("当前便携版缺少自动更新配置。")
@@ -252,20 +361,30 @@ local function startCheck(manual)
   end
 
   if manual then
-    app.tip("正在检查中文增强版更新…", 3)
+    showProgressDialog(
+      "正在检查更新",
+      STATUS_LABELS.checking,
+      "检查期间可以继续使用 Aseprite。")
   end
+
+  activeOperation = "Check"
   if not launchHelper("Check") then
+    clearActiveOperation()
     if manual then
       showError("无法启动更新检查，请检查 PowerShell 是否可用。")
+    else
+      closeActiveDialog()
     end
     return
   end
+
   pollForResult("Check", function(result)
     if result.status == "update-available" then
       updaterPlugin.preferences.lastCheck = os.time()
       showUpdateAvailable(result)
     elseif result.status == "up-to-date" then
       updaterPlugin.preferences.lastCheck = os.time()
+      closeActiveDialog()
       if manual then
         app.alert{
           title = "中文增强版更新",
@@ -273,8 +392,12 @@ local function startCheck(manual)
           buttons = "确定"
         }
       end
-    elseif manual then
-      showError(result.message)
+    else
+      if manual then
+        showError(result.message)
+      else
+        closeActiveDialog()
+      end
     end
   end)
 end
@@ -288,6 +411,7 @@ end
 
 function init(plugin)
   updaterPlugin = plugin
+  math.randomseed(os.time())
   installationDirectory = app.fs.filePath(app.fs.appPath)
   resultPath = app.fs.joinPath(app.fs.tempPath, RESULT_FILE_NAME)
   buildInfo = readJsonFile(app.fs.joinPath(installationDirectory, "build-info.json"))
@@ -319,6 +443,7 @@ end
 
 function exit(plugin)
   stopPolling()
+  clearActiveOperation()
   if startupTimer then
     startupTimer:stop()
     startupTimer = nil
