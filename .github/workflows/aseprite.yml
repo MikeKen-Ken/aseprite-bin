@@ -120,7 +120,7 @@ jobs:
                   [string]$manifest.status -ne "published" -or
                   [string]$manifest.buildKey -ne $buildKey -or
                   [DateTimeOffset]::Parse([string]$manifest.expiresAt) -le
-                    [DateTimeOffset]::UtcNow.AddDays(14)
+                    [DateTimeOffset]::UtcNow.AddDays(45)
               }
             }
             catch {

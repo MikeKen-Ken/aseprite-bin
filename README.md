@@ -98,6 +98,7 @@
 
 > [!TIP]
 > GitHub 要求下载者已登录并具有仓库读取权限；Actions 产物默认保留 90 天。
+> 本项目会在剩余 45 天时自动重新构建并滚动续期。
 > 详见 [下载工作流产物](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts)。
 
 <details>
@@ -143,7 +144,7 @@
 <details>
 <summary><b>⚙️ 展开查看高级说明</b></summary>
 
-- 定时检查：约每三天一次，中国标准时间 09:17。
+- 定时检查：约每三天一次，中国标准时间 09:17；产物剩余 45 天时自动续期。
 - `version`：留空自动选择 Aseprite 最新稳定版，也可填写指定版本。
 - `chinese_release`：留空自动匹配，也可手动指定汉化 Release。
 - `aseprite.defaults.ini`：仅记录本次构建默认值，不覆盖个人配置。
