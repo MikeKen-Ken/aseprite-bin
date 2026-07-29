@@ -36,13 +36,13 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
           REQUESTED_VERSION: ${{ inputs.version }}
+          REQUESTED_CHINESE_RELEASE: ${{ inputs.chinese_release }}
         run: |
-          $requestedVersion = $env:REQUESTED_VERSION.Trim()
+          $requestedVersion = ([string]$env:REQUESTED_VERSION).Trim()
+          $requestedChineseRelease = ([string]$env:REQUESTED_CHINESE_RELEASE).Trim()
 
           if ($requestedVersion) {
             $version = $requestedVersion
-            $shouldBuild = $true
-            $reason = "manual version requested"
           }
           else {
             $headers = @{
@@ -63,33 +63,61 @@ jobs:
             if ($version -notmatch '^v[0-9]+(\.[0-9]+){2,3}$') {
               throw "Unexpected stable version tag: $version"
             }
+          }
 
-            if ($env:EVENT_NAME -eq "workflow_dispatch") {
-              $shouldBuild = $true
-              $reason = "manual latest-version build"
+          $resolverArguments = @{
+            AsepriteVersion = $version
+            RepositoryRoot = (Get-Location).Path
+            GitHubToken = $env:GH_TOKEN
+          }
+          if ($requestedChineseRelease) {
+            $resolverArguments.ReleaseOverride = $requestedChineseRelease
+          }
+
+          $resolutionJson = & ./scripts/Resolve-ChineseRelease.ps1 @resolverArguments
+          $resolution = $resolutionJson | ConvertFrom-Json
+          $chineseRelease = [string]$resolution.releaseTag
+          $chineseSupportedVersion = [string]$resolution.supportedAsepriteVersion
+          $chineseMatchMode = [string]$resolution.matchMode
+          $buildKey = "$version|$chineseRelease|$chineseMatchMode|$chineseSupportedVersion"
+
+          if ($env:EVENT_NAME -eq "workflow_dispatch") {
+            $shouldBuild = $true
+            $reason = if ($requestedVersion -or $requestedChineseRelease) {
+              "manual build requested"
             }
             else {
-              $stateFile = ".github/last-built-version.txt"
-              $lastBuilt = if (Test-Path $stateFile) {
-                (Get-Content -Raw $stateFile).Trim()
-              }
-              else {
-                ""
-              }
-              $shouldBuild = $lastBuilt -ne $version
-              $reason = if ($shouldBuild) {
-                "new stable release (previous: $lastBuilt)"
-              }
-              else {
-                "already built"
-              }
+              "manual latest-version build"
+            }
+          }
+          else {
+            $stateFile = ".github/last-built-version.txt"
+            $lastBuilt = if (Test-Path $stateFile) {
+              (Get-Content -Raw $stateFile).Trim()
+            }
+            else {
+              ""
+            }
+            $shouldBuild = $lastBuilt -ne $buildKey
+            $reason = if ($shouldBuild) {
+              "build state changed (previous: $lastBuilt)"
+            }
+            else {
+              "Aseprite and Chinese extension already built"
             }
           }
 
           "version=$version" >> $env:GITHUB_OUTPUT
+          "chinese_release=$chineseRelease" >> $env:GITHUB_OUTPUT
+          "chinese_supported_aseprite_version=$chineseSupportedVersion" >> $env:GITHUB_OUTPUT
+          "chinese_match_mode=$chineseMatchMode" >> $env:GITHUB_OUTPUT
+          "build_key=$buildKey" >> $env:GITHUB_OUTPUT
           "should_build=$($shouldBuild.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-          "### Aseprite version check" >> $env:GITHUB_STEP_SUMMARY
-          "- Version: ``$version``" >> $env:GITHUB_STEP_SUMMARY
+          "### Aseprite build-state check" >> $env:GITHUB_STEP_SUMMARY
+          "- Aseprite: ``$version``" >> $env:GITHUB_STEP_SUMMARY
+          "- Chinese extension: ``$chineseRelease``" >> $env:GITHUB_STEP_SUMMARY
+          "- Compatibility: ``$chineseMatchMode``" >> $env:GITHUB_STEP_SUMMARY
+          "- Translation target: ``$chineseSupportedVersion``" >> $env:GITHUB_STEP_SUMMARY
           "- Build: ``$shouldBuild``" >> $env:GITHUB_STEP_SUMMARY
           "- Reason: $reason" >> $env:GITHUB_STEP_SUMMARY
 
@@ -100,7 +128,8 @@ jobs:
         run: call build.cmd
         env:
           ASEPRITE_VERSION: ${{ steps.version.outputs.version }}
-          CHINESE_EXTENSION_RELEASE: ${{ inputs.chinese_release }}
+          CHINESE_EXTENSION_RELEASE: ${{ steps.version.outputs.chinese_release }}
+          CHINESE_EXTENSION_SUPPORTED_ASEPRITE_VERSION: ${{ steps.version.outputs.chinese_supported_aseprite_version }}
           GH_TOKEN: ${{ github.token }}
 
       - name: Archive
@@ -117,8 +146,10 @@ jobs:
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           VERSION: ${{ steps.version.outputs.version }}
+          CHINESE_RELEASE: ${{ steps.version.outputs.chinese_release }}
+          BUILD_KEY: ${{ steps.version.outputs.build_key }}
         run: |
-          Set-Content -Path ".github/last-built-version.txt" -Value $env:VERSION
+          Set-Content -Path ".github/last-built-version.txt" -Value $env:BUILD_KEY
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ".github/last-built-version.txt"
@@ -128,6 +159,6 @@ jobs:
             exit 0
           }
 
-          git commit -m "record successful Aseprite $env:VERSION build"
+          git commit -m "record successful Aseprite $env:VERSION / Chinese $env:CHINESE_RELEASE build"
           git pull --rebase origin $env:DEFAULT_BRANCH
           git push origin "HEAD:$env:DEFAULT_BRANCH"

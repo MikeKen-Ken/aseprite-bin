@@ -23,90 +23,6 @@ $extensionRepository = "Cetaceaqua/Aseprite-Simplified-Chinese-Extension"
 $languageAssetName = "aseprite-simplified-chinese-extension.aseprite-extension"
 $themeAssetName = "aseprite-theme-boutique.aseprite-extension"
 
-function Normalize-AsepriteVersion([string]$Version) {
-  $normalized = $Version.Trim()
-  if (-not $normalized.StartsWith("v")) {
-    $normalized = "v$normalized"
-  }
-  if ($normalized -notmatch '^v[0-9]+(\.[0-9]+){2,3}([\-+][0-9A-Za-z.-]+)?$') {
-    throw "Unexpected Aseprite version: $Version"
-  }
-  return $normalized
-}
-
-function Find-AsepriteVersion([string]$Text) {
-  if ($Text -and $Text -match '(?i)\bAseprite\s+v?([0-9]+(?:\.[0-9]+){2,3}(?:[\-+][0-9A-Za-z.-]+)?)') {
-    return Normalize-AsepriteVersion $Matches[1]
-  }
-  return $null
-}
-
-function Get-ApiHeaders {
-  $headers = @{
-    Accept = "application/vnd.github+json"
-    "User-Agent" = "MikeKen-Ken-aseprite-bin"
-    "X-GitHub-Api-Version" = "2022-11-28"
-  }
-  if ($GitHubToken) {
-    $headers.Authorization = "Bearer $GitHubToken"
-  }
-  return $headers
-}
-
-function Invoke-GitHubJson([string]$Uri) {
-  return Invoke-RestMethod -Headers (Get-ApiHeaders) -Uri $Uri
-}
-
-function Get-ReleaseCommitMessage($Release) {
-  try {
-    $tag = [Uri]::EscapeDataString([string]$Release.tag_name)
-    $reference = Invoke-GitHubJson "https://api.github.com/repos/$extensionRepository/git/ref/tags/$tag"
-    $objectType = [string]$reference.object.type
-    $objectSha = [string]$reference.object.sha
-
-    if ($objectType -eq "tag") {
-      $tagObject = Invoke-GitHubJson "https://api.github.com/repos/$extensionRepository/git/tags/$objectSha"
-      $objectType = [string]$tagObject.object.type
-      $objectSha = [string]$tagObject.object.sha
-    }
-    if ($objectType -ne "commit") {
-      return $null
-    }
-
-    $commit = Invoke-GitHubJson "https://api.github.com/repos/$extensionRepository/commits/$objectSha"
-    return [string]$commit.commit.message
-  }
-  catch {
-    Write-Warning "Could not inspect release tag '$($Release.tag_name)': $($_.Exception.Message)"
-    return $null
-  }
-}
-
-function Get-MappedEntryByRelease($Compatibility, [string]$Release) {
-  foreach ($property in $Compatibility.PSObject.Properties) {
-    if ([string]$property.Value.release -eq $Release) {
-      return $property.Value
-    }
-  }
-  return $null
-}
-
-function Get-ReleaseSupportedVersion($Release, $Compatibility) {
-  $mapped = Get-MappedEntryByRelease $Compatibility ([string]$Release.tag_name)
-  if ($mapped) {
-    return Normalize-AsepriteVersion ([string]$mapped.supportedAsepriteVersion)
-  }
-
-  foreach ($text in @([string]$Release.name, [string]$Release.body)) {
-    $found = Find-AsepriteVersion $text
-    if ($found) {
-      return $found
-    }
-  }
-
-  return Find-AsepriteVersion (Get-ReleaseCommitMessage $Release)
-}
-
 function Expand-ZipSafely([string]$ArchivePath, [string]$DestinationPath) {
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   [System.IO.Directory]::CreateDirectory($DestinationPath) | Out-Null
@@ -165,80 +81,30 @@ function Write-JsonFile([string]$Path, $Value) {
   [System.IO.File]::WriteAllText($Path, $json + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
 }
 
-$AsepriteVersion = Normalize-AsepriteVersion $AsepriteVersion
 $RepositoryRoot = [System.IO.Path]::GetFullPath($RepositoryRoot)
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) {
   throw "Output directory does not exist: $OutputDirectory"
 }
 
-$compatibilityFile = Join-Path $RepositoryRoot "config/chinese-extension-compatibility.json"
-$compatibilityDocument = Get-Content -Raw -LiteralPath $compatibilityFile | ConvertFrom-Json
-$compatibility = $compatibilityDocument.compatibility
-$mappedProperty = $compatibility.PSObject.Properties | Where-Object Name -EQ $AsepriteVersion | Select-Object -First 1
-
-$releaseTag = $null
-$supportedAsepriteVersion = $null
-$matchMode = $null
-$useLatestAlias = $false
-
+$resolverArguments = @{
+  AsepriteVersion = $AsepriteVersion
+  RepositoryRoot = $RepositoryRoot
+  GitHubToken = $GitHubToken
+}
 if ($ReleaseOverride) {
-  $releaseTag = $ReleaseOverride.Trim()
-  if ($ReleaseSupportedVersionOverride) {
-    $supportedAsepriteVersion = Normalize-AsepriteVersion $ReleaseSupportedVersionOverride
-  }
-  else {
-    $mappedOverride = Get-MappedEntryByRelease $compatibility $releaseTag
-    if ($mappedOverride) {
-      $supportedAsepriteVersion = Normalize-AsepriteVersion ([string]$mappedOverride.supportedAsepriteVersion)
-    }
-  }
+  $resolverArguments.ReleaseOverride = $ReleaseOverride
 }
-elseif ($mappedProperty) {
-  $releaseTag = [string]$mappedProperty.Value.release
-  $supportedAsepriteVersion = Normalize-AsepriteVersion ([string]$mappedProperty.Value.supportedAsepriteVersion)
+if ($ReleaseSupportedVersionOverride) {
+  $resolverArguments.ReleaseSupportedVersionOverride = $ReleaseSupportedVersionOverride
 }
-else {
-  try {
-    $releases = @(
-      Invoke-GitHubJson "https://api.github.com/repos/$extensionRepository/releases?per_page=30" |
-        Where-Object { -not $_.draft -and -not $_.prerelease }
-    )
-    if ($releases.Count -eq 0) {
-      throw "No stable Chinese extension releases were returned"
-    }
-
-    foreach ($release in $releases) {
-      $releaseSupportedVersion = Get-ReleaseSupportedVersion $release $compatibility
-      if ($releaseSupportedVersion -eq $AsepriteVersion) {
-        $releaseTag = [string]$release.tag_name
-        $supportedAsepriteVersion = $releaseSupportedVersion
-        break
-      }
-    }
-
-    if (-not $releaseTag) {
-      $latestRelease = $releases[0]
-      $releaseTag = [string]$latestRelease.tag_name
-      $supportedAsepriteVersion = Get-ReleaseSupportedVersion $latestRelease $compatibility
-    }
-  }
-  catch {
-    Write-Warning "Could not query release metadata; using GitHub's latest-release alias. $($_.Exception.Message)"
-    $releaseTag = "latest"
-    $useLatestAlias = $true
-  }
-}
-
-if ($supportedAsepriteVersion -eq $AsepriteVersion) {
-  $matchMode = "exact"
-}
-elseif ($supportedAsepriteVersion) {
-  $matchMode = "fallback"
-}
-else {
-  $matchMode = "unverified"
-}
+$resolutionJson = & (Join-Path $RepositoryRoot "scripts/Resolve-ChineseRelease.ps1") @resolverArguments
+$resolution = $resolutionJson | ConvertFrom-Json
+$AsepriteVersion = [string]$resolution.asepriteVersion
+$releaseTag = [string]$resolution.releaseTag
+$supportedAsepriteVersion = [string]$resolution.supportedAsepriteVersion
+$matchMode = [string]$resolution.matchMode
+$useLatestAlias = [bool]$resolution.useLatestAlias
 
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("aseprite-chinese-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $temporaryRoot -Force | Out-Null

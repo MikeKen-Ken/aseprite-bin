@@ -40,14 +40,17 @@ For building newer aseprite version repeat steps 3 to 5.
 
 ## Automatic stable builds
 
-The workflow checks Aseprite's latest stable GitHub Release approximately every
-three days at 01:17 UTC (09:17 China Standard Time). Beta, release-candidate,
-prerelease, and draft releases are ignored.
+The workflow checks both Aseprite's latest stable GitHub Release and the
+Simplified Chinese extension approximately every three days at 01:17 UTC
+(09:17 China Standard Time). Beta, release-candidate, prerelease, and draft
+releases are ignored.
 
-When the stable version is newer than `.github/last-built-version.txt`, the
-workflow builds it, uploads the result as a GitHub Actions artifact, and records
-the version only after a successful build. If the version has not changed, the
-scheduled run finishes without rebuilding.
+The file `.github/last-built-version.txt` stores the last successful combined
+build state: Aseprite version, selected Chinese release, and compatibility
+status. If either Aseprite or the selected translation changes, the workflow
+builds and uploads a new GitHub Actions artifact. It records the new combined
+state only after a successful build. If neither has changed, the scheduled run
+finishes without rebuilding.
 
 Manual runs continue to work as before:
 
