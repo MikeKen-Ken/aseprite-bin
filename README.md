@@ -2,6 +2,13 @@
 
 To purchase Aseprite license visit its [download page][].
 
+Each build also includes:
+
+- Cetaceaqua's Simplified Chinese extension, selected as the default language.
+- Cetaceaqua's Boutique light and dark themes.
+- BoutiqueBitmap 9x9 for normal UI text and BoutiqueBitmap 7x7 for mini text.
+- The Boutique dark theme selected by default.
+
 Step by step guide to build binaries for latest version:
 
 # 1. Create fork by clicking `Fork` button on the top right
@@ -52,6 +59,55 @@ compiled binaries as public GitHub Releases; Aseprite's license limits source
 compilation to personal use and prohibits distributing software copies to third
 parties.
 
+## Simplified Chinese compatibility
+
+The build first checks `config/chinese-extension-compatibility.json`, then tries
+to identify the Aseprite version mentioned by each stable release of
+[Cetaceaqua's translation][chinese-extension]. An exact match is preferred.
+
+If no exact match can be identified, the build continues with the latest stable
+translation release. The fallback is visible in all of these places:
+
+- the GitHub Actions artifact name;
+- the language extension display name in Aseprite;
+- `build-info.json` inside the portable build;
+- the GitHub Actions run summary.
+
+An artifact such as
+`aseprite-v1.3.19-zh-0.1.15-boutique-fallback-from-1.3.18.1` means that Aseprite
+v1.3.19 was packaged with a translation originally identified for v1.3.18.1.
+`compat-unverified` means that the translation's intended Aseprite version
+could not be determined.
+
+Manual workflow runs can set `chinese_release` to force a specific translation
+release. A manual override is still labeled as a fallback or unverified build
+unless its target Aseprite version is present in the compatibility map.
+
+The extensions are unpacked into `data/extensions`, so a fresh portable build
+starts in `zh_Hans_ceta` with the `boutique-dark` theme. These are initial
+defaults only: users can still change the language, theme, and font in
+Preferences.
+
+## Updating an existing portable folder
+
+Do not copy a new artifact directly over an existing portable folder and
+replace every file. Doing that replaces `aseprite.ini`, which contains the
+portable user's preferences.
+
+Instead:
+
+1. Extract the new artifact into a separate temporary folder.
+2. Drag the existing Aseprite folder onto `update-existing.cmd` from the new
+   folder.
+3. The updater copies the new program, data, translation, and theme files while
+   excluding `aseprite.ini`. It does not delete extra files from the existing
+   folder.
+
+`aseprite.defaults.ini` records the defaults shipped by the current build for
+reference. It is not loaded by Aseprite and does not replace the active
+`aseprite.ini`.
+
 [Aseprite]: https://github.com/aseprite/aseprite
 [versions]: https://github.com/aseprite/aseprite/tags
 [download page]: https://www.aseprite.org/download/
+[chinese-extension]: https://github.com/Cetaceaqua/Aseprite-Simplified-Chinese-Extension/releases

@@ -1,0 +1,7 @@
+*.cmd diff merge text eol=crlf
+*.json diff merge text eol=lf
+*.md diff merge text eol=lf
+*.ps1 diff merge text eol=lf
+*.py diff merge text eol=lf
+*.yml diff merge text eol=lf
+*.ttf binary

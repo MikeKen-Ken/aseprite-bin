@@ -7,6 +7,9 @@ on:
       version:
         description: "Version to build, leave empty for latest"
         required: false
+      chinese_release:
+        description: "Chinese extension release override, leave empty for automatic matching/latest fallback"
+        required: false
   schedule:
     # Approximately every three days at 09:17 China Standard Time (UTC+8).
     - cron: "17 1 */3 * *"
@@ -97,12 +100,14 @@ jobs:
         run: call build.cmd
         env:
           ASEPRITE_VERSION: ${{ steps.version.outputs.version }}
+          CHINESE_EXTENSION_RELEASE: ${{ inputs.chinese_release }}
+          GH_TOKEN: ${{ github.token }}
 
       - name: Archive
         if: steps.version.outputs.should_build == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: aseprite-${{ steps.build.outputs.ASEPRITE_VERSION }}
+          name: ${{ steps.build.outputs.ARTIFACT_NAME }}
           path: github
           if-no-files-found: error
 

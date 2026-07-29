@@ -8,6 +8,11 @@ where /q git.exe || (
   exit /b 1
 )
 
+where /q pwsh.exe || (
+  echo ERROR: "pwsh.exe" not found
+  exit /b 1
+)
+
 if exist "%ProgramFiles%\7-Zip\7z.exe" (
   set SZIP="%ProgramFiles%\7-Zip\7z.exe"
 ) else (
@@ -119,13 +124,22 @@ ninja.exe -C build || echo build failed && exit /b 1
 
 rem *** create output folder
 
+if exist aseprite-%ASEPRITE_VERSION% rd /s /q aseprite-%ASEPRITE_VERSION%
 mkdir aseprite-%ASEPRITE_VERSION%
-echo # This file is here so Aseprite behaves as a portable program >aseprite-%ASEPRITE_VERSION%\aseprite.ini
 xcopy /E /Q /Y aseprite\docs aseprite-%ASEPRITE_VERSION%\docs\
 xcopy /E /Q /Y build\bin\aseprite.exe aseprite-%ASEPRITE_VERSION%\
 xcopy /E /Q /Y build\bin\data aseprite-%ASEPRITE_VERSION%\data\
 
+pwsh.exe -NoLogo -NoProfile -File scripts\Integrate-ChineseDefaults.ps1 ^
+  -AsepriteVersion "%ASEPRITE_VERSION%"                              ^
+  -OutputDirectory "aseprite-%ASEPRITE_VERSION%"
+if errorlevel 1 (
+  echo failed to integrate Chinese defaults
+  exit /b 1
+)
+
 if "%GITHUB_WORKFLOW%" neq "" (
+  if exist github rd /s /q github
   mkdir github
   move aseprite-%ASEPRITE_VERSION% github\
   echo ASEPRITE_VERSION=%ASEPRITE_VERSION%>>"%GITHUB_OUTPUT%"

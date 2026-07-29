@@ -1,4 +1,6 @@
 *.zip
+*.pyc
+__pycache__/
 skia*
 build
 aseprite*

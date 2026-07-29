@@ -1,0 +1,9 @@
+{
+  "repository": "Cetaceaqua/Aseprite-Simplified-Chinese-Extension",
+  "compatibility": {
+    "v1.3.18.1": {
+      "release": "0.1.15",
+      "supportedAsepriteVersion": "v1.3.18.1"
+    }
+  }
+}
