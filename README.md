@@ -1,122 +1,221 @@
-[Aseprite][] binary build for 64-bit Windows.
+# Aseprite Windows 自动构建（简体中文增强版）
 
-To purchase Aseprite license visit its [download page][].
+[![Aseprite 构建状态](https://github.com/MikeKen-Ken/aseprite-bin/actions/workflows/aseprite.yml/badge.svg)](https://github.com/MikeKen-Ken/aseprite-bin/actions/workflows/aseprite.yml)
 
-Each build also includes:
+本仓库使用 GitHub Actions 自动编译 64 位 Windows 版
+[Aseprite](https://github.com/aseprite/aseprite)，并在构建产物中预装简体中文、
+Boutique 主题和配套字体。手动运行时无需填写版本号，工作流会自动获取最新稳定版。
 
-- Cetaceaqua's Simplified Chinese extension, selected as the default language.
-- Cetaceaqua's Boutique light and dark themes.
-- BoutiqueBitmap 9x9 for normal UI text and BoutiqueBitmap 7x7 for mini text.
-- The Boutique light theme selected by default.
+> [!IMPORTANT]
+> 本仓库提供的是自动化构建流程，不公开发布 Aseprite 二进制 Release。
+> Actions 产物仅供构建者本人使用。请购买
+> [Aseprite 正版授权](https://www.aseprite.org/download/)，并遵守其许可条款。
 
-Step by step guide to build binaries for latest version:
+## 构建产物包含什么
 
-# 1. Create fork by clicking `Fork` button on the top right
+| 项目 | 默认设置 |
+| --- | --- |
+| Aseprite | 最新稳定版，或手动指定的版本 |
+| 简体中文 | 自动匹配 [鲸流的简体中文扩展](https://github.com/Cetaceaqua/Aseprite-Simplified-Chinese-Extension/releases) |
+| 主题 | 内置 Boutique 亮色与深色主题，首次启动默认使用亮色 `boutique` |
+| 正常界面字体 | `BoutiqueBitmap9x9` |
+| 小号界面字体 | `BoutiqueBitmap7x7` |
+| 便携模式 | 配置和用户数据保存在 Aseprite 文件夹内 |
+| 安全更新 | 附带 `update-existing.cmd`，更新程序时保留旧配置 |
 
-![step1a](images/step1a.png)
-![step1b](images/step1b.png)
+全新解压的构建默认使用：
 
-# 2. Click `Actions` tab on the top, and enable actions
+- 语言：`zh_Hans_ceta`
+- 主题：Boutique 亮色 `boutique`
+- 普通字体：BoutiqueBitmap 9×9
+- 小号字体：BoutiqueBitmap 7×7
 
-![step2](images/step2.png)
+这些只是首次启动默认值，之后仍可在 Aseprite 的“首选项”中自由修改。
 
-# 3. Open `aseprite` workflow, and click `Run workflow`
+## 快速开始
 
-Optionally specify which version of Asprite to build (e.g. v1.3.10) in text field.
-Leave it empty to build latest released version.
-See list of available Aseprite versions [here][versions].
+### 1. Fork 本仓库
 
-![step3](images/step3.png)
+点击页面右上角的 **Fork**，把仓库复制到自己的 GitHub 账号。
 
-# 4. Wait ~13min for build to finish, then open latest run
+![Fork 仓库](images/step1a.png)
 
-![step4](images/step4.png)
+![确认 Fork](images/step1b.png)
 
-# 5. Scroll to the bottom to download .zip archive
+### 2. 启用 GitHub Actions
 
-![step5](images/step5.png)
+进入自己仓库的 **Actions** 页面并启用工作流。
 
-For building newer aseprite version repeat steps 3 to 5.
+![启用 Actions](images/step2.png)
 
-## Automatic stable builds
+### 3. 运行构建
 
-The workflow checks both Aseprite's latest stable GitHub Release and the
-Simplified Chinese extension approximately every three days at 01:17 UTC
-(09:17 China Standard Time). Beta, release-candidate, prerelease, and draft
-releases are ignored.
+打开名为 **aseprite** 的工作流，点击 **Run workflow**。
 
-The file `.github/last-built-version.txt` stores the last successful combined
-build state: Aseprite version, selected Chinese release, and compatibility
-status. If either Aseprite or the selected translation changes, the workflow
-builds and uploads a new GitHub Actions artifact. It records the new combined
-state only after a successful build. If neither has changed, the scheduled run
-finishes without rebuilding.
+![运行工作流](images/step3.png)
 
-Manual runs continue to work as before:
+两个输入框都可以留空：
 
-- Specify a tag such as `v1.3.18.1` to build that exact version.
-- Leave the version empty to build the latest stable release again.
+| 输入项 | 留空时 | 填写示例 |
+| --- | --- | --- |
+| `version` | 自动获取 Aseprite 最新稳定版 | `v1.3.18.1` |
+| `chinese_release` | 自动匹配汉化，找不到对应版本时使用最新稳定汉化 | `0.1.15` |
 
-Artifacts are intended for the person who compiled them. Do not publish the
-compiled binaries as public GitHub Releases; Aseprite's license limits source
-compilation to personal use and prohibits distributing software copies to third
-parties.
+通常直接留空运行即可，不再需要每次手动输入 Aseprite 版本号。
 
-## Simplified Chinese compatibility
+### 4. 下载构建产物
 
-The build first checks `config/chinese-extension-compatibility.json`, then tries
-to identify the Aseprite version mentioned by each stable release of
-[Cetaceaqua's translation][chinese-extension]. An exact match is preferred.
+等待构建完成，打开本次运行记录。
 
-If no exact match can be identified, the build continues with the latest stable
-translation release. The fallback is visible in all of these places:
+![等待构建完成](images/step4.png)
 
-- the GitHub Actions artifact name;
-- the language extension display name in Aseprite;
-- `build-info.json` inside the portable build;
-- the GitHub Actions run summary.
+在页面底部的 **Artifacts** 区域下载压缩包。
 
-An artifact such as
-`aseprite-v1.3.19-zh-0.1.15-boutique-fallback-from-1.3.18.1` means that Aseprite
-v1.3.19 was packaged with a translation originally identified for v1.3.18.1.
-`compat-unverified` means that the translation's intended Aseprite version
-could not be determined.
+![下载构建产物](images/step5.png)
 
-Manual workflow runs can set `chinese_release` to force a specific translation
-release. A manual override is still labeled as a fallback or unverified build
-unless its target Aseprite version is present in the compatibility map.
+GitHub Actions 的 Build Summary 会用中文显示 Aseprite 版本、汉化版本、
+兼容状态、默认主题、字体和最终产物名称。
 
-The extensions are unpacked into `data/extensions`, so a fresh portable build
-starts in `zh_Hans_ceta` with the `boutique` light theme. These are initial
-defaults only: users can still change the language, theme, and font in
-Preferences.
+## 自动检查与定时构建
 
-## Updating an existing portable folder
+工作流大约每三天自动检查一次，执行时间为：
 
-Do not copy a new artifact directly over an existing portable folder and
-replace every file. Doing that replaces `aseprite.ini`, which contains the
-portable user's preferences.
+- UTC：01:17
+- 中国标准时间（UTC+8）：09:17
 
-Instead:
+每次检查都会同时解析：
 
-1. Extract the new artifact into a separate temporary folder.
-2. Drag the existing Aseprite folder onto `update-existing.cmd` from the new
-   folder.
-3. The updater copies the new program, data, translation, and theme files while
-   excluding `aseprite.ini`. It does not delete extra files from the existing
-   folder. After a successful update, it automatically deletes the extracted
-   new source folder. If the surrounding artifact folder is then empty and its
-   name matches the artifact, that folder is removed too.
+1. Aseprite 最新稳定版；
+2. 当前应使用的简体中文扩展 Release；
+3. 汉化与 Aseprite 的兼容状态。
 
-If copying fails, the downloaded source is kept so the update can be retried.
-Set `ASEPRITE_UPDATE_KEEP_SOURCE=1` before running the updater to keep the
-downloaded source even after a successful update.
+只要 Aseprite 或汉化插件任意一方发生变化，就会重新构建。两者都没有变化时，
+定时任务会跳过耗时的编译。Beta、RC、预发布和草稿 Release 不会被当作最新稳定版。
 
-`aseprite.defaults.ini` records the defaults shipped by the current build for
-reference. It is not loaded by Aseprite and does not replace the active
-`aseprite.ini`.
+上一次成功构建的组合状态记录在 `.github/last-built-version.txt`。只有完整构建和
+产物上传成功后才会更新该记录，因此失败的构建不会阻止下一次自动重试。
 
-[Aseprite]: https://github.com/aseprite/aseprite
-[versions]: https://github.com/aseprite/aseprite/tags
-[download page]: https://www.aseprite.org/download/
-[chinese-extension]: https://github.com/Cetaceaqua/Aseprite-Simplified-Chinese-Extension/releases
+## 汉化版本匹配与兜底
+
+构建脚本会优先寻找与目标 Aseprite 精确对应的最新汉化：
+
+1. 读取 `config/chinese-extension-compatibility.json` 中的兼容性映射；
+2. 检查汉化 Release 的名称、说明和对应提交；
+3. 优先选择明确支持当前 Aseprite 的最新 Release；
+4. 无法确认对应关系时，继续使用汉化仓库的最新稳定 Release。
+
+构建不会因为缺少精确对应版本而直接停止，但会明确标记兼容状态：
+
+| 标记 | 含义 |
+| --- | --- |
+| `exact` | 汉化与目标 Aseprite 精确匹配 |
+| `fallback` | 使用了原本适配旧版 Aseprite 的汉化 |
+| `compat-unverified` | 已使用最新稳定汉化，但无法确认其适配版本 |
+
+兜底状态会出现在：
+
+- GitHub Actions 中文构建摘要；
+- Actions 产物名称；
+- Aseprite 中的语言扩展显示名称；
+- 产物内的 `build-info.json`。
+
+例如：
+
+```text
+aseprite-v1.3.19-zh-0.1.15-boutique-fallback-from-1.3.18.1
+```
+
+表示 Aseprite `v1.3.19` 使用了原本识别为适配 `v1.3.18.1` 的汉化 `0.1.15`。
+
+## 无损更新已有的便携版
+
+不要直接把新版文件全部覆盖到旧 Aseprite 文件夹。旧文件夹中的
+`aseprite.ini` 保存了语言、主题、窗口布局和其他首选项。
+
+推荐操作：
+
+1. 把新下载的 Actions 产物解压到临时位置；
+2. 找到新版目录内的 `update-existing.cmd`；
+3. 把正在使用的旧 Aseprite 文件夹拖到 `update-existing.cmd` 上；
+4. 等待脚本提示更新完成；
+5. 以后继续运行旧文件夹里的 `aseprite.exe`。
+
+更新关系可以理解为：
+
+```text
+新下载并解压的文件夹  --复制新版程序/汉化/主题-->  原来的旧 Aseprite 文件夹
+                                                    ↑
+                                      最终继续使用这个文件夹
+```
+
+更新脚本会：
+
+- 更新 `aseprite.exe`、程序数据、汉化和 Boutique 主题；
+- 保留旧的 `aseprite.ini`；
+- 保留快捷键、布局、笔刷、会话、调色板和其他用户文件；
+- 不删除旧目录中新版不存在的额外文件；
+- 更新成功后自动删除本次解压出来的新版来源文件夹；
+- 如果外层 Actions 产物目录已经为空且名称匹配，也会一并清理；
+- 更新失败时保留新版来源，方便排查后重新执行。
+
+因此，更新完成后的新版位于**原来的旧文件夹**中，新下载的临时副本会被清理。
+
+如果希望在更新成功后仍保留新版来源，可在运行前设置：
+
+```bat
+set ASEPRITE_UPDATE_KEEP_SOURCE=1
+```
+
+### 为什么旧脚本显示 `Extras 4`
+
+旧版更新脚本可能显示类似：
+
+```text
+FAILED 0
+Extras 4
+```
+
+这表示失败数量为 `0`。`Extras` 是旧目录中存在、但新版来源中没有的用户目录或文件，
+例如 `files`、`sessions`、快捷键和布局。脚本会保留它们，并不是更新失败。
+新版脚本已经隐藏这段容易误解的 Robocopy 统计信息。
+
+## 默认配置与现有配置的区别
+
+- `aseprite.ini`：当前实际使用的个人配置，更新时始终保留。
+- `aseprite.defaults.ini`：本次构建附带的默认值，仅供查看，不会覆盖个人配置。
+- `build-info.json`：记录 Aseprite 版本、汉化 Release、兼容状态、主题、字体和产物名称。
+
+Boutique 亮色主题只作为**全新构建的首次默认主题**。通过 `update-existing.cmd`
+更新已有目录时，因为旧的 `aseprite.ini` 会被保留，所以不会强制改变你当前使用的
+语言、主题或其他首选项。
+
+## 常见问题
+
+### 每次运行 Action 都要填写版本号吗？
+
+不需要。`version` 留空时会自动构建 Aseprite 最新稳定版。
+
+### Aseprite 没更新，但汉化插件更新了，会重新构建吗？
+
+会。定时任务比较的是 Aseprite、汉化 Release 和兼容状态的组合。
+
+### 找不到与新版 Aseprite 对应的汉化怎么办？
+
+构建会使用最新稳定汉化继续完成，并通过 `fallback` 或 `compat-unverified`
+清楚标记，不会悄悄把旧汉化伪装成精确匹配。
+
+### 更新完成后应该打开哪个文件夹？
+
+继续使用原来的旧 Aseprite 文件夹，并运行其中的 `aseprite.exe`。
+
+### 更新会覆盖我的主题和快捷键吗？
+
+不会。更新脚本保留 `aseprite.ini` 和其他用户文件。只有全新解压、首次使用的构建
+才会默认选择 Boutique 亮色主题。
+
+## 相关项目
+
+- [Aseprite 源代码](https://github.com/aseprite/aseprite)
+- [Aseprite 版本列表](https://github.com/aseprite/aseprite/tags)
+- [Aseprite 官方购买与下载](https://www.aseprite.org/download/)
+- [Aseprite 简体中文扩展](https://github.com/Cetaceaqua/Aseprite-Simplified-Chinese-Extension)
