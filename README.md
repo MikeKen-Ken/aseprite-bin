@@ -88,6 +88,18 @@
 > Actions 产物需要 GitHub 身份验证。第一次使用前安装
 > [GitHub CLI](https://cli.github.com/)，并运行一次 `gh auth login`。
 
+### 下载失败怎么办？
+
+- 确认 GitHub CLI 已登录，并且当前账号能读取自己的 Fork。
+- Actions 产物会过期或被删除；重新运行一次工作流即可生成新产物。
+- Fork 的定时工作流可能被 GitHub 停用；请在 Actions 页面重新启用。
+- 网络、代理、GitHub 服务或权限异常也可能导致检查或下载失败。
+- 旧 `pkg:2` 如显示“检测超时”，请从最新 Action 手动下载一次 `pkg:3`。
+
+> [!TIP]
+> GitHub 要求下载者已登录并具有仓库读取权限；Actions 产物默认保留 90 天。
+> 详见 [下载工作流产物](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts)。
+
 <details>
 <summary><b>🔄 展开：手动更新备用方法</b></summary>
 
@@ -148,6 +160,13 @@
 [简体中文扩展](https://github.com/Cetaceaqua/Aseprite-Simplified-Chinese-Extension) ·
 [购买 Aseprite](https://www.aseprite.org/download/)
 
+## ⚖️ 许可与免责声明
+
 > [!WARNING]
-> 本仓库只提供自动构建流程，不公开发布 Aseprite 二进制 Release。
-> Actions 产物仅供构建者本人使用，请购买正版并遵守 Aseprite 许可条款。
+> 本项目是社区维护的非官方构建工具，与 Aseprite、Igara Studio、汉化扩展
+> 及主题作者不存在隶属、授权或担保关系。
+
+- 本仓库只提供自动构建脚本，不公开发布 Aseprite 二进制 Release。使用者应自行购买正版，并遵守 [Aseprite EULA 与官方 FAQ](https://www.aseprite.org/faq)；个人构建产物不得向第三方重新分发。
+- Aseprite 名称、程序及相关权利归其权利人所有；汉化、主题、字体和其他第三方组件分别遵循各自许可。本仓库不授予任何额外的软件、商标或再分发权利。
+- 构建脚本、自动更新及其产物均按“现状”提供，不承诺持续可用、无错误、安全、兼容或适合特定用途。GitHub、网络、上游源码或第三方组件变化都可能导致构建、下载或更新失败。
+- 自动更新会修改当前 Aseprite 目录。请先保存作品并自行备份重要配置和文件。在适用法律允许的最大范围内，维护者不对使用或无法使用本项目造成的数据丢失、软件故障、许可争议或其他直接、间接损失承担责任。
