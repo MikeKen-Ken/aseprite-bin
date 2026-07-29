@@ -101,6 +101,17 @@
 > 本项目会在剩余 45 天时自动重新构建并滚动续期。
 > 详见 [下载工作流产物](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts)。
 
+### 90 天限制怎么处理？
+
+工作流约每三天检查一次。产物剩余 45 天时，即使软件版本没变化，
+也会重新构建并获得新的保留期。单纯续期不会改变 `buildKey`，
+因此不会向用户重复提示“发现新版”。
+
+> [!IMPORTANT]
+> 本项目不把编译后的 Aseprite 放入公开 Release，以避免违反其二进制
+> 再分发限制。如果定时任务被 GitHub 停用，在 Actions 页面重新启用并
+> 手动运行一次工作流即可恢复。
+
 <details>
 <summary><b>🔄 展开：手动更新备用方法</b></summary>
 
