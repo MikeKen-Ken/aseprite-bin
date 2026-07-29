@@ -13,7 +13,10 @@ param(
   [string]$ReleaseSupportedVersionOverride = $env:CHINESE_EXTENSION_SUPPORTED_ASEPRITE_VERSION,
   [string]$LanguageArchivePath = "",
   [string]$ThemeArchivePath = "",
-  [string]$GitHubToken = $env:GH_TOKEN
+  [string]$GitHubToken = $env:GH_TOKEN,
+  [ValidateRange(1, 2147483647)]
+  [int]$PackageRevision = 2,
+  [string]$UpdateRepository = "MikeKen-Ken/aseprite-bin"
 )
 
 Set-StrictMode -Version Latest
@@ -86,6 +89,9 @@ $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 if (-not (Test-Path -LiteralPath $OutputDirectory -PathType Container)) {
   throw "Output directory does not exist: $OutputDirectory"
 }
+if ($UpdateRepository -notmatch '^[0-9A-Za-z_.-]+/[0-9A-Za-z_.-]+$') {
+  throw "Unexpected update repository: $UpdateRepository"
+}
 
 $resolverArguments = @{
   AsepriteVersion = $AsepriteVersion
@@ -126,10 +132,16 @@ try {
   New-Item -ItemType Directory -Path $extensionsRoot -Force | Out-Null
   $languageDirectory = Join-Path $extensionsRoot "aseprite-simplified-chinese-extension"
   $themeDirectory = Join-Path $extensionsRoot "aseprite-theme-boutique"
+  $updaterDirectory = Join-Path $extensionsRoot "aseprite-bin-updater"
   Reset-ChildDirectory $extensionsRoot $languageDirectory
   Reset-ChildDirectory $extensionsRoot $themeDirectory
+  Reset-ChildDirectory $extensionsRoot $updaterDirectory
   Expand-ZipSafely $LanguageArchivePath $languageDirectory
   Expand-ZipSafely $ThemeArchivePath $themeDirectory
+  Get-ChildItem `
+    -LiteralPath (Join-Path $RepositoryRoot "assets/updater-extension") `
+    -Force |
+    Copy-Item -Destination $updaterDirectory -Recurse -Force
 
   $languagePackagePath = Join-Path $languageDirectory "package.json"
   $languagePackage = Get-Content -Raw -LiteralPath $languagePackagePath | ConvertFrom-Json
@@ -180,6 +192,9 @@ selected = $selectedTheme
   Copy-Item `
     -LiteralPath (Join-Path $RepositoryRoot "scripts/cleanup-update-source.ps1") `
     -Destination (Join-Path $OutputDirectory "cleanup-update-source.ps1")
+  Copy-Item `
+    -LiteralPath (Join-Path $RepositoryRoot "scripts/Invoke-AsepriteUpdate.ps1") `
+    -Destination (Join-Path $OutputDirectory "Invoke-AsepriteUpdate.ps1")
 
   $releaseLabel = $releaseTag.TrimStart("v")
   $artifactName = "aseprite-$AsepriteVersion-zh-$releaseLabel-boutique"
@@ -190,9 +205,13 @@ selected = $selectedTheme
     $artifactName += "-compat-unverified"
   }
   $artifactName = $artifactName -replace '[^0-9A-Za-z._-]', '-'
+  $buildKey =
+    "$AsepriteVersion|$releaseTag|$matchMode|$supportedAsepriteVersion|pkg:$PackageRevision"
 
   $buildInfo = [ordered]@{
     asepriteVersion = $AsepriteVersion
+    packageRevision = $PackageRevision
+    buildKey = $buildKey
     chineseExtension = [ordered]@{
       repository = $extensionRepository
       release = $releaseTag
@@ -205,6 +224,11 @@ selected = $selectedTheme
       fontFamily = "BoutiqueBitmap9x9"
       miniFontFamily = "BoutiqueBitmap7x7"
     }
+    update = [ordered]@{
+      repository = $UpdateRepository
+      manifestPath = ".github/update-manifest.json"
+      checkIntervalHours = 24
+    }
     artifactName = $artifactName
   }
   Write-JsonFile (Join-Path $OutputDirectory "build-info.json") $buildInfo
@@ -214,6 +238,8 @@ selected = $selectedTheme
     "CHINESE_RELEASE=$releaseTag" >> $env:GITHUB_OUTPUT
     "CHINESE_MATCH_MODE=$matchMode" >> $env:GITHUB_OUTPUT
     "CHINESE_SUPPORTED_ASEPRITE_VERSION=$supportedAsepriteVersion" >> $env:GITHUB_OUTPUT
+    "PACKAGE_REVISION=$PackageRevision" >> $env:GITHUB_OUTPUT
+    "BUILD_KEY=$buildKey" >> $env:GITHUB_OUTPUT
     "ARTIFACT_NAME=$artifactName" >> $env:GITHUB_OUTPUT
   }
   if ($env:GITHUB_STEP_SUMMARY) {
@@ -234,6 +260,7 @@ selected = $selectedTheme
     "- 默认语言：``zh_Hans_ceta``" >> $env:GITHUB_STEP_SUMMARY
     "- 默认主题：``$selectedTheme``" >> $env:GITHUB_STEP_SUMMARY
     "- 界面字体：``BoutiqueBitmap9x9`` / ``BoutiqueBitmap7x7``" >> $env:GITHUB_STEP_SUMMARY
+    "- 自动更新：已启用（包修订 ``$PackageRevision``）" >> $env:GITHUB_STEP_SUMMARY
     "- 构建产物：``$artifactName``" >> $env:GITHUB_STEP_SUMMARY
   }
 

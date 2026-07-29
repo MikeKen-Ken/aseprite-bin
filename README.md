@@ -2,7 +2,7 @@
 
 # 🎨 Aseprite 中文增强便携版
 
-### 下载即中文 · 自动追踪更新 · 像素主题 · 无损更新
+### 下载即中文 · 软件内更新 · 像素主题 · 配置不丢
 
 [![构建状态](https://github.com/MikeKen-Ken/aseprite-bin/actions/workflows/aseprite.yml/badge.svg)](https://github.com/MikeKen-Ken/aseprite-bin/actions/workflows/aseprite.yml) ![Windows x64](https://img.shields.io/badge/Windows-x64-0078D4?logo=windows11&logoColor=white) ![简体中文](https://img.shields.io/badge/Chinese-Built--in-E95420) ![便携版](https://img.shields.io/badge/Portable-No_Install-2EA44F)
 
@@ -19,9 +19,9 @@
 
 ## ✨ 这版多了什么
 
-| 🇨🇳 **开箱即中文** | 🔄 **自动追踪更新** |
+| 🇨🇳 **开箱即中文** | 🔔 **软件内一键更新** |
 | --- | --- |
-| 汉化已经内置并默认启用，无需手动安装。 | Aseprite 或汉化任意更新，都会触发新构建。 |
+| 汉化已经内置并默认启用，无需手动安装。 | 自动提醒；点击即可下载、校验并覆盖当前目录。 |
 | 🎨 **更舒服的界面** | 🛡️ **更新不丢配置** |
 | Boutique 亮/暗主题 + 像素字体，默认亮色。 | 一键更新旧文件夹，保留设置、快捷键和笔刷。 |
 
@@ -31,6 +31,7 @@
 | --- | :---: | :---: |
 | 简体中文 | — | ✅ 内置并默认启用 |
 | 版本追踪 | 手动运行 | ✅ Aseprite + 汉化自动追踪 |
+| 软件内更新 | — | ✅ 检查、下载、安装 |
 | 主题与字体 | 默认资源 | ✅ Boutique + BoutiqueBitmap |
 | 汉化兼容提示 | — | ✅ 精确匹配 / 旧版兜底 |
 | 旧版本更新 | 手动覆盖 | ✅ 保留配置的一键更新 |
@@ -70,7 +71,25 @@
 
 </details>
 
-## 🔄 已有版本？直接无损更新
+## 🔔 以后更新，只点一下
+
+启动后每天检查一次；发现新版时直接点击 **下载并更新**。
+
+也可以随时打开：
+
+```text
+帮助 → 检查中文增强版更新…
+```
+
+下载完成后，Aseprite 会关闭、覆盖当前文件夹并尝试自动重启。
+`aseprite.ini` 和已有用户文件会保留。
+
+> [!NOTE]
+> Actions 产物需要 GitHub 身份验证。第一次使用前安装
+> [GitHub CLI](https://cli.github.com/)，并运行一次 `gh auth login`。
+
+<details>
+<summary><b>🔄 展开：手动更新备用方法</b></summary>
 
 ```text
 把「旧 Aseprite 文件夹」
@@ -87,6 +106,8 @@
 > [!NOTE]
 > 旧脚本中的 `FAILED 0 / Extras 4` 表示失败数为 0；`Extras` 是被保留的用户文件，
 > 不是错误。新版脚本已经隐藏这段容易误解的信息。
+
+</details>
 
 ## 🧩 汉化兼容状态
 
@@ -115,6 +136,7 @@
 - `chinese_release`：留空自动匹配，也可手动指定汉化 Release。
 - `aseprite.defaults.ini`：仅记录本次构建默认值，不覆盖个人配置。
 - `build-info.json`：记录 Aseprite、汉化、主题和兼容状态。
+- 软件启动后每天检查一次更新，也可从“帮助”菜单手动检查。
 - 如需保留新版来源，可在更新前设置 `ASEPRITE_UPDATE_KEEP_SOURCE=1`。
 
 </details>

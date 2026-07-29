@@ -21,6 +21,9 @@ concurrency:
   group: aseprite-build
   cancel-in-progress: false
 
+env:
+  ASEPRITE_PACKAGE_REVISION: "2"
+
 jobs:
   build:
     runs-on: windows-2025
@@ -79,7 +82,14 @@ jobs:
           $chineseRelease = [string]$resolution.releaseTag
           $chineseSupportedVersion = [string]$resolution.supportedAsepriteVersion
           $chineseMatchMode = [string]$resolution.matchMode
-          $buildKey = "$version|$chineseRelease|$chineseMatchMode|$chineseSupportedVersion"
+          $packageRevision = $env:ASEPRITE_PACKAGE_REVISION
+          $buildKey =
+            "$version|$chineseRelease|$chineseMatchMode|$chineseSupportedVersion|pkg:$packageRevision"
+          $publishUpdate =
+            $env:EVENT_NAME -eq "schedule" -or
+            ($env:EVENT_NAME -eq "workflow_dispatch" -and
+              -not $requestedVersion -and
+              -not $requestedChineseRelease)
 
           if ($env:EVENT_NAME -eq "workflow_dispatch") {
             $shouldBuild = $true
@@ -98,9 +108,34 @@ jobs:
             else {
               ""
             }
-            $shouldBuild = $lastBuilt -ne $buildKey
+            $manifestNeedsRefresh = $false
+            $manifestPath = ".github/update-manifest.json"
+            try {
+              if (-not (Test-Path $manifestPath)) {
+                $manifestNeedsRefresh = $true
+              }
+              else {
+                $manifest = Get-Content -Raw $manifestPath | ConvertFrom-Json
+                $manifestNeedsRefresh =
+                  [string]$manifest.status -ne "published" -or
+                  [string]$manifest.buildKey -ne $buildKey -or
+                  [DateTimeOffset]::Parse([string]$manifest.expiresAt) -le
+                    [DateTimeOffset]::UtcNow.AddDays(14)
+              }
+            }
+            catch {
+              $manifestNeedsRefresh = $true
+            }
+
+            $stateChanged = $lastBuilt -ne $buildKey
+            $shouldBuild = $stateChanged -or $manifestNeedsRefresh
             $reason = if ($shouldBuild) {
-              "构建状态已变化（上次：$lastBuilt）"
+              if ($stateChanged) {
+                "构建状态已变化（上次：$lastBuilt）"
+              }
+              else {
+                "自动更新产物即将过期，需要重新生成"
+              }
             }
             else {
               "当前 Aseprite 与汉化插件组合已经构建"
@@ -124,13 +159,16 @@ jobs:
           "chinese_release=$chineseRelease" >> $env:GITHUB_OUTPUT
           "chinese_supported_aseprite_version=$chineseSupportedVersion" >> $env:GITHUB_OUTPUT
           "chinese_match_mode=$chineseMatchMode" >> $env:GITHUB_OUTPUT
+          "package_revision=$packageRevision" >> $env:GITHUB_OUTPUT
           "build_key=$buildKey" >> $env:GITHUB_OUTPUT
+          "publish_update=$($publishUpdate.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "should_build=$($shouldBuild.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "### Aseprite 构建状态检查" >> $env:GITHUB_STEP_SUMMARY
           "- Aseprite 版本：``$version``" >> $env:GITHUB_STEP_SUMMARY
           "- 汉化插件版本：``$chineseRelease``" >> $env:GITHUB_STEP_SUMMARY
           "- 兼容状态：$compatibilityLabel（``$chineseMatchMode``）" >> $env:GITHUB_STEP_SUMMARY
           "- 汉化适配版本：$translationTarget" >> $env:GITHUB_STEP_SUMMARY
+          "- 包修订：``$packageRevision``" >> $env:GITHUB_STEP_SUMMARY
           "- 是否构建：$buildLabel" >> $env:GITHUB_STEP_SUMMARY
           "- 原因：$reason" >> $env:GITHUB_STEP_SUMMARY
 
@@ -143,35 +181,84 @@ jobs:
           ASEPRITE_VERSION: ${{ steps.version.outputs.version }}
           CHINESE_EXTENSION_RELEASE: ${{ steps.version.outputs.chinese_release }}
           CHINESE_EXTENSION_SUPPORTED_ASEPRITE_VERSION: ${{ steps.version.outputs.chinese_supported_aseprite_version }}
+          ASEPRITE_PACKAGE_REVISION: ${{ steps.version.outputs.package_revision }}
+          ASEPRITE_UPDATE_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
 
       - name: Archive
         if: steps.version.outputs.should_build == 'true'
+        id: archive
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.build.outputs.ARTIFACT_NAME }}
           path: github
           if-no-files-found: error
+          retention-days: 90
 
-      - name: Record successful scheduled build
-        if: github.event_name == 'schedule' && steps.version.outputs.should_build == 'true'
+      - name: Publish update manifest and build state
+        if: steps.version.outputs.publish_update == 'true' && steps.version.outputs.should_build == 'true'
         shell: pwsh
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           VERSION: ${{ steps.version.outputs.version }}
           CHINESE_RELEASE: ${{ steps.version.outputs.chinese_release }}
+          CHINESE_MATCH_MODE: ${{ steps.version.outputs.chinese_match_mode }}
+          CHINESE_SUPPORTED_VERSION: ${{ steps.version.outputs.chinese_supported_aseprite_version }}
+          PACKAGE_REVISION: ${{ steps.version.outputs.package_revision }}
           BUILD_KEY: ${{ steps.version.outputs.build_key }}
+          ARTIFACT_ID: ${{ steps.archive.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.archive.outputs.artifact-url }}
+          ARTIFACT_DIGEST: ${{ steps.archive.outputs.artifact-digest }}
+          ARTIFACT_NAME: ${{ steps.build.outputs.ARTIFACT_NAME }}
+          RUN_ID: ${{ github.run_id }}
+          SOURCE_SHA: ${{ github.sha }}
         run: |
+          if ([string]::IsNullOrWhiteSpace($env:ARTIFACT_ID)) {
+            throw "upload-artifact did not return artifact-id"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:ARTIFACT_DIGEST)) {
+            throw "upload-artifact did not return artifact-digest"
+          }
+
           Set-Content -Path ".github/last-built-version.txt" -Value $env:BUILD_KEY
+          $publishedAt = [DateTimeOffset]::UtcNow
+          $digest = [string]$env:ARTIFACT_DIGEST
+          if (-not $digest.StartsWith("sha256:")) {
+            $digest = "sha256:$digest"
+          }
+          $manifest = [ordered]@{
+            schemaVersion = 1
+            status = "published"
+            buildKey = $env:BUILD_KEY
+            packageRevision = [int]$env:PACKAGE_REVISION
+            asepriteVersion = $env:VERSION
+            chineseRelease = $env:CHINESE_RELEASE
+            chineseMatchMode = $env:CHINESE_MATCH_MODE
+            chineseSupportedAsepriteVersion = $env:CHINESE_SUPPORTED_VERSION
+            artifactId = [long]$env:ARTIFACT_ID
+            artifactName = $env:ARTIFACT_NAME
+            artifactUrl = $env:ARTIFACT_URL
+            artifactDigest = $digest
+            workflowRunId = [long]$env:RUN_ID
+            sourceCommit = $env:SOURCE_SHA
+            publishedAt = $publishedAt.ToString("o")
+            expiresAt = $publishedAt.AddDays(89).ToString("o")
+          }
+          $manifestJson = $manifest | ConvertTo-Json -Depth 10
+          [System.IO.File]::WriteAllText(
+            (Join-Path (Get-Location) ".github/update-manifest.json"),
+            $manifestJson + [Environment]::NewLine,
+            [System.Text.UTF8Encoding]::new($false))
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ".github/last-built-version.txt"
+          git add ".github/last-built-version.txt" ".github/update-manifest.json"
 
           git diff --cached --quiet
           if ($LASTEXITCODE -eq 0) {
             exit 0
           }
 
-          git commit -m "record successful Aseprite $env:VERSION / Chinese $env:CHINESE_RELEASE build"
+          git commit -m "publish Aseprite $env:VERSION / Chinese $env:CHINESE_RELEASE update"
           git pull --rebase origin $env:DEFAULT_BRANCH
           git push origin "HEAD:$env:DEFAULT_BRANCH"
