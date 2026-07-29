@@ -84,10 +84,10 @@ jobs:
           if ($env:EVENT_NAME -eq "workflow_dispatch") {
             $shouldBuild = $true
             $reason = if ($requestedVersion -or $requestedChineseRelease) {
-              "manual build requested"
+              "已手动指定构建参数"
             }
             else {
-              "manual latest-version build"
+              "手动构建最新版本"
             }
           }
           else {
@@ -100,11 +100,24 @@ jobs:
             }
             $shouldBuild = $lastBuilt -ne $buildKey
             $reason = if ($shouldBuild) {
-              "build state changed (previous: $lastBuilt)"
+              "构建状态已变化（上次：$lastBuilt）"
             }
             else {
-              "Aseprite and Chinese extension already built"
+              "当前 Aseprite 与汉化插件组合已经构建"
             }
+          }
+
+          $compatibilityLabel = switch ($chineseMatchMode) {
+            "exact" { "精确匹配" }
+            "fallback" { "使用旧版汉化兜底" }
+            default { "兼容性未验证" }
+          }
+          $buildLabel = if ($shouldBuild) { "是" } else { "否" }
+          $translationTarget = if ($chineseSupportedVersion) {
+            "``$chineseSupportedVersion``"
+          }
+          else {
+            "未知"
           }
 
           "version=$version" >> $env:GITHUB_OUTPUT
@@ -113,13 +126,13 @@ jobs:
           "chinese_match_mode=$chineseMatchMode" >> $env:GITHUB_OUTPUT
           "build_key=$buildKey" >> $env:GITHUB_OUTPUT
           "should_build=$($shouldBuild.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-          "### Aseprite build-state check" >> $env:GITHUB_STEP_SUMMARY
-          "- Aseprite: ``$version``" >> $env:GITHUB_STEP_SUMMARY
-          "- Chinese extension: ``$chineseRelease``" >> $env:GITHUB_STEP_SUMMARY
-          "- Compatibility: ``$chineseMatchMode``" >> $env:GITHUB_STEP_SUMMARY
-          "- Translation target: ``$chineseSupportedVersion``" >> $env:GITHUB_STEP_SUMMARY
-          "- Build: ``$shouldBuild``" >> $env:GITHUB_STEP_SUMMARY
-          "- Reason: $reason" >> $env:GITHUB_STEP_SUMMARY
+          "### Aseprite 构建状态检查" >> $env:GITHUB_STEP_SUMMARY
+          "- Aseprite 版本：``$version``" >> $env:GITHUB_STEP_SUMMARY
+          "- 汉化插件版本：``$chineseRelease``" >> $env:GITHUB_STEP_SUMMARY
+          "- 兼容状态：$compatibilityLabel（``$chineseMatchMode``）" >> $env:GITHUB_STEP_SUMMARY
+          "- 汉化适配版本：$translationTarget" >> $env:GITHUB_STEP_SUMMARY
+          "- 是否构建：$buildLabel" >> $env:GITHUB_STEP_SUMMARY
+          "- 原因：$reason" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Build
         if: steps.version.outputs.should_build == 'true'

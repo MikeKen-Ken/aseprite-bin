@@ -214,19 +214,24 @@ selected = $selectedTheme
     "ARTIFACT_NAME=$artifactName" >> $env:GITHUB_OUTPUT
   }
   if ($env:GITHUB_STEP_SUMMARY) {
-    "### Simplified Chinese defaults" >> $env:GITHUB_STEP_SUMMARY
-    "- Chinese release: ``$releaseTag`` (package ``$extensionVersion``)" >> $env:GITHUB_STEP_SUMMARY
-    "- Compatibility: ``$matchMode``" >> $env:GITHUB_STEP_SUMMARY
+    $compatibilityLabel = switch ($matchMode) {
+      "exact" { "精确匹配" }
+      "fallback" { "使用旧版汉化兜底" }
+      default { "兼容性未验证" }
+    }
+    "### 简体中文默认设置" >> $env:GITHUB_STEP_SUMMARY
+    "- 汉化版本：``$releaseTag``（插件包版本 ``$extensionVersion``）" >> $env:GITHUB_STEP_SUMMARY
+    "- 兼容状态：$compatibilityLabel（``$matchMode``）" >> $env:GITHUB_STEP_SUMMARY
     if ($supportedAsepriteVersion) {
-      "- Translation target: ``$supportedAsepriteVersion``" >> $env:GITHUB_STEP_SUMMARY
+      "- 汉化适配版本：``$supportedAsepriteVersion``" >> $env:GITHUB_STEP_SUMMARY
     }
     else {
-      "- Translation target: unknown; latest stable release was used" >> $env:GITHUB_STEP_SUMMARY
+      "- 汉化适配版本：未知，已使用最新稳定版" >> $env:GITHUB_STEP_SUMMARY
     }
-    "- Default language: ``zh_Hans_ceta``" >> $env:GITHUB_STEP_SUMMARY
-    "- Default theme: ``$selectedTheme``" >> $env:GITHUB_STEP_SUMMARY
-    "- UI fonts: ``BoutiqueBitmap9x9`` / ``BoutiqueBitmap7x7``" >> $env:GITHUB_STEP_SUMMARY
-    "- Artifact: ``$artifactName``" >> $env:GITHUB_STEP_SUMMARY
+    "- 默认语言：``zh_Hans_ceta``" >> $env:GITHUB_STEP_SUMMARY
+    "- 默认主题：``$selectedTheme``" >> $env:GITHUB_STEP_SUMMARY
+    "- 界面字体：``BoutiqueBitmap9x9`` / ``BoutiqueBitmap7x7``" >> $env:GITHUB_STEP_SUMMARY
+    "- 构建产物：``$artifactName``" >> $env:GITHUB_STEP_SUMMARY
   }
 
   Write-Output "Chinese extension release: $releaseTag"
