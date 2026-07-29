@@ -7,12 +7,12 @@
   "chineseRelease": "0.1.15",
   "chineseMatchMode": "exact",
   "chineseSupportedAsepriteVersion": "v1.3.18.1",
-  "artifactId": 8719679506,
+  "artifactId": 8741765075,
   "artifactName": "aseprite-v1.3.18.1-zh-0.1.15-boutique",
-  "artifactUrl": "https://github.com/MikeKen-Ken/aseprite-bin/actions/runs/30440323114/artifacts/8719679506",
-  "artifactDigest": "sha256:654b6cfb1ae6acd1f7387278cdde389f8d44b8395e3b8ceeb5fa5882fb2f96c1",
-  "workflowRunId": 30440323114,
-  "sourceCommit": "4a33c629fc2d7309d4fcf85f2b9136a57a85efaf",
-  "publishedAt": "2026-07-29T09:56:08.3390466+00:00",
-  "expiresAt": "2026-10-26T09:56:08.3390466+00:00"
+  "artifactUrl": "https://github.com/MikeKen-Ken/aseprite-bin/actions/runs/30495212653/artifacts/8741765075",
+  "artifactDigest": "sha256:daa05bd88c555245e7ffb315082626d2fa455a2b3e69fc5fa488c3edd9ce4411",
+  "workflowRunId": 30495212653,
+  "sourceCommit": "8f17ac7fffbfa8118f23de0b2a908fefc55593c5",
+  "publishedAt": "2026-07-29T22:31:56.9759407+00:00",
+  "expiresAt": "2026-10-26T22:31:56.9759407+00:00"
 }
