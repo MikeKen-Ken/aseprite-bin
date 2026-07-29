@@ -1,17 +1,50 @@
-# Aseprite Windows 自动构建（简体中文增强版）
+# Aseprite 中文增强便携版｜Windows 自动构建
 
 [![Aseprite 构建状态](https://github.com/MikeKen-Ken/aseprite-bin/actions/workflows/aseprite.yml/badge.svg)](https://github.com/MikeKen-Ken/aseprite-bin/actions/workflows/aseprite.yml)
 
-本仓库使用 GitHub Actions 自动编译 64 位 Windows 版
-[Aseprite](https://github.com/aseprite/aseprite)，并在构建产物中预装简体中文、
-Boutique 主题和配套字体。手动运行时无需填写版本号，工作流会自动获取最新稳定版。
+这是 [`mmozeiko/aseprite-bin`](https://github.com/mmozeiko/aseprite-bin) 的
+**中文增强分支**。它保留了原版使用 GitHub Actions 编译 64 位 Windows
+[Aseprite](https://github.com/aseprite/aseprite) 的能力，并重点解决了中文用户
+下载后还要安装汉化、配置主题、手动追踪版本，以及更新时容易覆盖个人配置的问题。
+
+## 与原版的区别
+
+> 这里的“原版”指上游
+> [`mmozeiko/aseprite-bin`](https://github.com/mmozeiko/aseprite-bin)，
+> 不是 Aseprite 官方发行版。
+
+| 功能 | 上游原版 | 本中文增强版 |
+| --- | --- | --- |
+| Windows 64 位自动编译 | ✅ | ✅ |
+| 手动留空版本号时构建最新稳定版 | ✅ | ✅ |
+| 定时追踪 Aseprite 新版本 | ❌ | ✅ 约每三天自动检查 |
+| 内置简体中文并默认启用 | ❌ | ✅ 鲸流的简体中文 |
+| 自动追踪汉化插件更新 | ❌ | ✅ 汉化单独更新也会重新构建 |
+| 汉化兼容性映射 | ❌ | ✅ 优先精确匹配，并提供最新版本兜底 |
+| 旧汉化提示 | ❌ | ✅ 在产物名、插件名、摘要和构建信息中明确标记 |
+| Boutique 亮色与深色主题 | ❌ | ✅ 两者均内置，首次默认使用亮色 |
+| BoutiqueBitmap 像素字体 | ❌ | ✅ 9×9 普通字体与 7×7 小号字体 |
+| 中文 Actions 构建摘要 | ❌ | ✅ 版本、兼容状态、主题和产物信息均为中文 |
+| 保留配置的一键更新 | ❌ | ✅ `update-existing.cmd` |
+| 更新后自动清理下载副本 | ❌ | ✅ 成功后清理，失败时保留以便重试 |
+| 便携版构建信息 | ❌ | ✅ 内置 `build-info.json` |
+
+### 这个版本最重要的改进
+
+- **下载即可中文使用**：语言、主题和字体已经放入便携版，无需再次安装扩展。
+- **Aseprite 和汉化都能自动追踪**：任意一方发布新版本，定时 Action 都会尝试重新构建。
+- **不会悄悄混用旧汉化**：找不到精确对应版本时仍可构建，但会明确显示
+  `fallback` 或 `compat-unverified`。
+- **更新不再覆盖个人设置**：把旧文件夹拖到新版的 `update-existing.cmd` 上，
+  程序会在旧文件夹中完成更新，同时保留配置、快捷键、布局、笔刷和其他用户数据。
+- **新版来源自动清理**：更新成功后删除本次解压的临时副本，不再长期保留多个版本目录。
 
 > [!IMPORTANT]
 > 本仓库提供的是自动化构建流程，不公开发布 Aseprite 二进制 Release。
 > Actions 产物仅供构建者本人使用。请购买
 > [Aseprite 正版授权](https://www.aseprite.org/download/)，并遵守其许可条款。
 
-## 构建产物包含什么
+## 本版本的默认产物
 
 | 项目 | 默认设置 |
 | --- | --- |
