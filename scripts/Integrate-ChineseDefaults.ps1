@@ -8,7 +8,7 @@ param(
 
   [string]$RepositoryRoot = (Split-Path -Parent $PSScriptRoot),
   [ValidateSet("dark", "light")]
-  [string]$ThemeVariant = "dark",
+  [string]$ThemeVariant = "light",
   [string]$ReleaseOverride = $env:CHINESE_EXTENSION_RELEASE,
   [string]$ReleaseSupportedVersionOverride = $env:CHINESE_EXTENSION_SUPPORTED_ASEPRITE_VERSION,
   [string]$LanguageArchivePath = "",
@@ -177,6 +177,9 @@ selected = $selectedTheme
   Copy-Item `
     -LiteralPath (Join-Path $RepositoryRoot "scripts/update-existing.cmd") `
     -Destination (Join-Path $OutputDirectory "update-existing.cmd")
+  Copy-Item `
+    -LiteralPath (Join-Path $RepositoryRoot "scripts/cleanup-update-source.ps1") `
+    -Destination (Join-Path $OutputDirectory "cleanup-update-source.ps1")
 
   $releaseLabel = $releaseTag.TrimStart("v")
   $artifactName = "aseprite-$AsepriteVersion-zh-$releaseLabel-boutique"

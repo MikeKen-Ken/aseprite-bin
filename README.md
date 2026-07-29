@@ -7,7 +7,7 @@ Each build also includes:
 - Cetaceaqua's Simplified Chinese extension, selected as the default language.
 - Cetaceaqua's Boutique light and dark themes.
 - BoutiqueBitmap 9x9 for normal UI text and BoutiqueBitmap 7x7 for mini text.
-- The Boutique dark theme selected by default.
+- The Boutique light theme selected by default.
 
 Step by step guide to build binaries for latest version:
 
@@ -87,7 +87,7 @@ release. A manual override is still labeled as a fallback or unverified build
 unless its target Aseprite version is present in the compatibility map.
 
 The extensions are unpacked into `data/extensions`, so a fresh portable build
-starts in `zh_Hans_ceta` with the `boutique-dark` theme. These are initial
+starts in `zh_Hans_ceta` with the `boutique` light theme. These are initial
 defaults only: users can still change the language, theme, and font in
 Preferences.
 
@@ -104,7 +104,13 @@ Instead:
    folder.
 3. The updater copies the new program, data, translation, and theme files while
    excluding `aseprite.ini`. It does not delete extra files from the existing
-   folder.
+   folder. After a successful update, it automatically deletes the extracted
+   new source folder. If the surrounding artifact folder is then empty and its
+   name matches the artifact, that folder is removed too.
+
+If copying fails, the downloaded source is kept so the update can be retried.
+Set `ASEPRITE_UPDATE_KEEP_SOURCE=1` before running the updater to keep the
+downloaded source even after a successful update.
 
 `aseprite.defaults.ini` records the defaults shipped by the current build for
 reference. It is not loaded by Aseprite and does not replace the active
