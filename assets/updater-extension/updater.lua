@@ -1,18 +1,27 @@
 local CHECK_INTERVAL_SECONDS = 24 * 60 * 60
-local RESULT_FILE_NAME = "aseprite-bin-updater-result.json"
+local RESULT_FILE_PREFIX = "aseprite-bin-updater-result-"
+local CANCEL_FILE_PREFIX = "aseprite-bin-updater-cancel-"
+local APPLY_RESULT_FILE_PREFIX = "aseprite-bin-updater-apply-"
+local SESSION_ID = tostring({}):gsub("[^0-9A-Za-z]", "")
 local HELPER_TIMEOUT_TICKS = 1200
 local CHECK_TIMEOUT_TICKS = 120
 
 local updaterPlugin = nil
 local buildInfo = nil
 local installationDirectory = nil
-local resultPath = nil
+local installationKey = nil
+local applyResultPath = nil
+local activeResultPath = nil
+local activeCancellationPath = nil
 local pollTimer = nil
 local startupTimer = nil
 local activeDialog = nil
 local activeOperation = nil
 local activeRequestId = nil
 local pollCancelled = false
+local closingDialogInternally = false
+local downloadProgressPercent = 0
+local downloadProgressKnown = false
 
 local STATUS_LABELS = {
   starting = "正在启动更新程序…",
@@ -44,8 +53,11 @@ end
 
 local function closeActiveDialog()
   if activeDialog then
-    activeDialog:close()
+    local dialog = activeDialog
     activeDialog = nil
+    closingDialogInternally = true
+    dialog:close()
+    closingDialogInternally = false
   end
 end
 
@@ -53,14 +65,41 @@ local function helperPath()
   return app.fs.joinPath(installationDirectory, "Invoke-AsepriteUpdate.ps1")
 end
 
-local function newRequestId()
-  return string.format("%d-%d", os.time(), math.random(100000, 999999))
+local function pathKey(value)
+  local hash = 0
+  local normalized = tostring(value):lower()
+  for index = 1, #normalized do
+    hash = (hash * 131 + normalized:byte(index)) % 2147483647
+  end
+  return tostring(hash)
 end
 
-local function clearActiveOperation()
+local function newRequestId()
+  return string.format(
+    "%s-%s-%d-%d-%d",
+    installationKey,
+    SESSION_ID,
+    os.time(),
+    math.floor((os.clock() % 1) * 1000000),
+    math.random(100000, 999999))
+end
+
+local function clearActiveOperation(removeFiles)
+  local resultToRemove = activeResultPath
+  local cancellationToRemove = activeCancellationPath
   activeOperation = nil
   activeRequestId = nil
+  activeResultPath = nil
+  activeCancellationPath = nil
   pollCancelled = false
+  if removeFiles then
+    if resultToRemove then
+      os.remove(resultToRemove)
+    end
+    if cancellationToRemove then
+      os.remove(cancellationToRemove)
+    end
+  end
 end
 
 local function stopPolling()
@@ -70,22 +109,61 @@ local function stopPolling()
   end
 end
 
-local function cancelActiveOperation()
+local function signalCancellation()
+  if not activeCancellationPath then
+    return
+  end
+  local file = io.open(activeCancellationPath, "wb")
+  if file then
+    file:write("cancel")
+    file:close()
+  end
+end
+
+local function cancelActiveOperation(dialogAlreadyClosed)
   if not activeOperation then
     return
   end
+  signalCancellation()
   pollCancelled = true
   stopPolling()
-  clearActiveOperation()
-  closeActiveDialog()
-  app.tip("已取消更新操作。后台任务如仍在运行，结果将被忽略。", 4)
+  clearActiveOperation(false)
+  if not dialogAlreadyClosed then
+    closeActiveDialog()
+  end
+  app.tip("已取消更新操作。后台下载正在停止并清理临时文件。", 4)
 end
 
-local function updateStatusLabel(status)
+local function formatBytes(value)
+  local bytes = tonumber(value or 0) or 0
+  if bytes >= 1024 * 1024 then
+    return string.format("%.1f MB", bytes / (1024 * 1024))
+  elseif bytes >= 1024 then
+    return string.format("%.1f KB", bytes / 1024)
+  end
+  return string.format("%d B", math.floor(bytes))
+end
+
+local function updateStatusLabel(result)
+  local status = result and result.status
   if not activeDialog or not status then
     return
   end
   local text = STATUS_LABELS[status]
+  if status == "downloading" and result.progressPercent then
+    downloadProgressPercent = math.max(
+      0,
+      math.min(100, tonumber(result.progressPercent) or 0))
+    downloadProgressKnown = true
+    text = string.format(
+      "正在下载构建产物… %d%%（%s / %s）",
+      math.floor(downloadProgressPercent),
+      formatBytes(result.bytesDownloaded),
+      formatBytes(result.totalBytes))
+    pcall(function()
+      activeDialog:repaint()
+    end)
+  end
   if text then
     pcall(function()
       activeDialog:modify{ id = "status", text = text }
@@ -96,8 +174,22 @@ end
 -- Launch PowerShell detached via cmd's start builtin so os.execute returns
 -- immediately and does not freeze the Aseprite UI during network I/O.
 local function launchHelper(mode, stagingSource)
-  os.remove(resultPath)
   activeRequestId = newRequestId()
+  if mode == "Apply" then
+    activeResultPath = applyResultPath
+    activeCancellationPath = nil
+  else
+    activeResultPath = app.fs.joinPath(
+      app.fs.tempPath,
+      RESULT_FILE_PREFIX .. activeRequestId .. ".json")
+    activeCancellationPath = app.fs.joinPath(
+      app.fs.tempPath,
+      CANCEL_FILE_PREFIX .. activeRequestId .. ".flag")
+  end
+  os.remove(activeResultPath)
+  if activeCancellationPath then
+    os.remove(activeCancellationPath)
+  end
   local command = table.concat({
     'cmd.exe /c start "" /b powershell.exe',
     "-NoLogo",
@@ -108,9 +200,11 @@ local function launchHelper(mode, stagingSource)
     "-File", quoteCommandArgument(helperPath()),
     "-Mode", quoteCommandArgument(mode),
     "-InstallationDirectory", quoteCommandArgument(installationDirectory),
-    "-ResultPath", quoteCommandArgument(resultPath),
+    "-ResultPath", quoteCommandArgument(activeResultPath),
     "-Repository", quoteCommandArgument(buildInfo.update.repository),
     "-RequestId", quoteCommandArgument(activeRequestId),
+    activeCancellationPath and
+      ("-CancellationPath " .. quoteCommandArgument(activeCancellationPath)) or "",
     stagingSource and ("-StagingSource " .. quoteCommandArgument(stagingSource)) or ""
   }, " ")
   local ok = os.execute(command)
@@ -134,7 +228,8 @@ local function pollForResult(operation, onComplete)
       pollTicks = pollTicks + 1
       if pollTicks >= timeoutTicks then
         stopPolling()
-        clearActiveOperation()
+        signalCancellation()
+        clearActiveOperation(false)
         onComplete{
           status = "error",
           message = "更新程序等待超时，请稍后重试。"
@@ -142,7 +237,7 @@ local function pollForResult(operation, onComplete)
         return
       end
 
-      local result = readJsonFile(resultPath)
+      local result = readJsonFile(activeResultPath)
       if not result or result.operation ~= operation then
         return
       end
@@ -157,12 +252,12 @@ local function pollForResult(operation, onComplete)
          result.status == "verifying" or
          result.status == "extracting" or
          result.status == "waiting-for-exit" then
-        updateStatusLabel(result.status)
+        updateStatusLabel(result)
         return
       end
 
       stopPolling()
-      clearActiveOperation()
+      clearActiveOperation(true)
       onComplete(result)
     end
   }
@@ -195,11 +290,20 @@ local function hasModifiedSprites()
   return false
 end
 
-local function showProgressDialog(title, statusText, hintText)
+local function showProgressDialog(title, statusText, hintText, showProgress)
   closeActiveDialog()
+  downloadProgressPercent = 0
+  downloadProgressKnown = false
   activeDialog = Dialog{
     title = title,
-    resizeable = false
+    resizeable = false,
+    onclose = function()
+      if closingDialogInternally then
+        return
+      end
+      activeDialog = nil
+      cancelActiveOperation(true)
+    end
   }
   activeDialog
     :label{
@@ -210,10 +314,34 @@ local function showProgressDialog(title, statusText, hintText)
       id = "hint",
       text = hintText
     }
+  if showProgress then
+    activeDialog:canvas{
+      id = "progress",
+      width = 260,
+      height = 12,
+      autoscaling = true,
+      onpaint = function(event)
+        local context = event.context
+        context.color = Color{ r = 86, g = 86, b = 86, a = 255 }
+        context:fillRect(Rectangle(0, 0, context.width, context.height))
+        if downloadProgressKnown then
+          local width = math.floor(
+            context.width * downloadProgressPercent / 100)
+          if width > 0 then
+            context.color = Color{ r = 45, g = 156, b = 219, a = 255 }
+            context:fillRect(Rectangle(0, 0, width, context.height))
+          end
+        end
+      end
+    }
+  end
+  activeDialog
     :button{
       id = "cancel",
       text = "取消",
-      onclick = cancelActiveOperation
+      onclick = function()
+        cancelActiveOperation(false)
+      end
     }
     :show{ wait = false }
 end
@@ -231,7 +359,7 @@ local function startApply(stagingSource)
   closeActiveDialog()
   activeOperation = "Apply"
   if not launchHelper("Apply", stagingSource) then
-    clearActiveOperation()
+    clearActiveOperation(true)
     showError("无法启动更新程序，请检查 PowerShell 是否可用。")
     return
   end
@@ -278,15 +406,16 @@ local function startDownload()
   showProgressDialog(
     "正在下载更新",
     STATUS_LABELS.starting,
-    "下载期间可以继续使用 Aseprite。")
+    "下载期间可以继续使用 Aseprite。",
+    true)
 
   activeOperation = "Download"
   if not launchHelper("Download") then
-    clearActiveOperation()
+    clearActiveOperation(true)
     showError("无法启动下载程序，请检查 PowerShell 是否可用。")
     return
   end
-  updateStatusLabel("checking")
+  updateStatusLabel{ status = "checking" }
   pollForResult("Download", function(result)
     if result.status == "downloaded" then
       showReadyToInstall(result)
@@ -364,12 +493,13 @@ local function startCheck(manual)
     showProgressDialog(
       "正在检查更新",
       STATUS_LABELS.checking,
-      "检查期间可以继续使用 Aseprite。")
+      "检查期间可以继续使用 Aseprite。",
+      false)
   end
 
   activeOperation = "Check"
   if not launchHelper("Check") then
-    clearActiveOperation()
+    clearActiveOperation(true)
     if manual then
       showError("无法启动更新检查，请检查 PowerShell 是否可用。")
     else
@@ -403,9 +533,12 @@ local function startCheck(manual)
 end
 
 local function checkPreviousApplyResult()
-  local result = readJsonFile(resultPath)
+  local result = readJsonFile(applyResultPath)
   if result and result.operation == "Apply" and result.status == "error" then
     showError("上一次自动更新没有完成：\n" .. tostring(result.message))
+  end
+  if result then
+    os.remove(applyResultPath)
   end
 end
 
@@ -413,7 +546,10 @@ function init(plugin)
   updaterPlugin = plugin
   math.randomseed(os.time())
   installationDirectory = app.fs.filePath(app.fs.appPath)
-  resultPath = app.fs.joinPath(app.fs.tempPath, RESULT_FILE_NAME)
+  installationKey = pathKey(installationDirectory)
+  applyResultPath = app.fs.joinPath(
+    app.fs.tempPath,
+    APPLY_RESULT_FILE_PREFIX .. installationKey .. ".json")
   buildInfo = readJsonFile(app.fs.joinPath(installationDirectory, "build-info.json"))
 
   plugin:newCommand{
@@ -443,7 +579,10 @@ end
 
 function exit(plugin)
   stopPolling()
-  clearActiveOperation()
+  if activeOperation and activeOperation ~= "Apply" then
+    signalCancellation()
+  end
+  clearActiveOperation(false)
   if startupTimer then
     startupTimer:stop()
     startupTimer = nil

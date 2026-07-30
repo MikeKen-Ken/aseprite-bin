@@ -15,6 +15,7 @@ param(
   [string]$ManifestUri = "",
   [string]$ArtifactArchivePath = "",
   [string]$RequestId = "",
+  [string]$CancellationPath = "",
   [switch]$NoRestart
 )
 
@@ -59,6 +60,16 @@ function Write-UpdateResult([string]$Status, [hashtable]$Data = @{}) {
   Write-JsonFile $ResultPath $result
 }
 
+function Test-UpdateCancelled {
+  return $CancellationPath -and (Test-Path -LiteralPath $CancellationPath)
+}
+
+function Assert-UpdateNotCancelled {
+  if (Test-UpdateCancelled) {
+    throw [System.OperationCanceledException]::new("更新已取消")
+  }
+}
+
 function Invoke-ExternalWithTimeout {
   param(
     [Parameter(Mandatory = $true)]
@@ -72,6 +83,7 @@ function Invoke-ExternalWithTimeout {
   $stdoutPath = [System.IO.Path]::GetTempFileName()
   $stderrPath = [System.IO.Path]::GetTempFileName()
   try {
+    Assert-UpdateNotCancelled
     $process = Start-Process `
       -FilePath $FilePath `
       -ArgumentList $ArgumentList `
@@ -79,9 +91,16 @@ function Invoke-ExternalWithTimeout {
       -PassThru `
       -RedirectStandardOutput $stdoutPath `
       -RedirectStandardError $stderrPath
-    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
-      try { $process.Kill() } catch { }
-      throw $TimeoutMessage
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    while (-not $process.WaitForExit(250)) {
+      if (Test-UpdateCancelled) {
+        try { $process.Kill() } catch { }
+        throw [System.OperationCanceledException]::new("更新已取消")
+      }
+      if ([DateTimeOffset]::UtcNow -ge $deadline) {
+        try { $process.Kill() } catch { }
+        throw $TimeoutMessage
+      }
     }
     $stdout = (Get-Content -Raw -LiteralPath $stdoutPath -ErrorAction SilentlyContinue)
     $stderr = (Get-Content -Raw -LiteralPath $stderrPath -ErrorAction SilentlyContinue)
@@ -96,7 +115,113 @@ function Invoke-ExternalWithTimeout {
   }
 }
 
+function Write-DownloadProgress($Manifest, [long]$DownloadedBytes, $TotalBytes) {
+  $data = @{
+    manifest = $Manifest
+    bytesDownloaded = $DownloadedBytes
+  }
+  if ($null -ne $TotalBytes -and [long]$TotalBytes -gt 0) {
+    $total = [long]$TotalBytes
+    $data.totalBytes = $total
+    $data.progressPercent = [Math]::Min(
+      100,
+      [Math]::Floor(($DownloadedBytes * 100.0) / $total))
+  }
+  Write-UpdateResult "downloading" $data
+}
+
+function Invoke-StreamingDownload {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Uri,
+    [Parameter(Mandatory = $true)]
+    [hashtable]$Headers,
+    [Parameter(Mandatory = $true)]
+    [string]$DestinationPath,
+    [Parameter(Mandatory = $true)]
+    $Manifest
+  )
+
+  Add-Type -AssemblyName System.Net.Http
+  $handler = [System.Net.Http.HttpClientHandler]::new()
+  $handler.AllowAutoRedirect = $true
+  $client = [System.Net.Http.HttpClient]::new($handler)
+  $client.Timeout = [System.Threading.Timeout]::InfiniteTimeSpan
+  $request = [System.Net.Http.HttpRequestMessage]::new(
+    [System.Net.Http.HttpMethod]::Get,
+    $Uri)
+  foreach ($header in $Headers.GetEnumerator()) {
+    $request.Headers.TryAddWithoutValidation(
+      [string]$header.Key,
+      [string]$header.Value) | Out-Null
+  }
+
+  $response = $null
+  $inputStream = $null
+  $outputStream = $null
+  try {
+    Assert-UpdateNotCancelled
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($script:DownloadTimeoutSec)
+    $responseTask = $client.SendAsync(
+      $request,
+      [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead)
+    while (-not $responseTask.IsCompleted) {
+      Assert-UpdateNotCancelled
+      if ([DateTimeOffset]::UtcNow -ge $deadline) {
+        throw "下载构建产物超时"
+      }
+      Start-Sleep -Milliseconds 250
+    }
+    $response = $responseTask.GetAwaiter().GetResult()
+    $response.EnsureSuccessStatusCode()
+    $totalBytes = $response.Content.Headers.ContentLength
+    $inputStream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+    $outputStream = [System.IO.File]::Create($DestinationPath)
+    $buffer = [byte[]]::new(128 * 1024)
+    [long]$downloadedBytes = 0
+    $lastProgressAt = [DateTimeOffset]::MinValue
+    Write-DownloadProgress $Manifest 0 $totalBytes
+
+    while ($true) {
+      Assert-UpdateNotCancelled
+      if ([DateTimeOffset]::UtcNow -ge $deadline) {
+        throw "下载构建产物超时"
+      }
+      $readTask = $inputStream.ReadAsync($buffer, 0, $buffer.Length)
+      while (-not $readTask.IsCompleted) {
+        Assert-UpdateNotCancelled
+        if ([DateTimeOffset]::UtcNow -ge $deadline) {
+          throw "下载构建产物超时"
+        }
+        Start-Sleep -Milliseconds 250
+      }
+      $count = $readTask.GetAwaiter().GetResult()
+      if ($count -le 0) {
+        break
+      }
+      $outputStream.Write($buffer, 0, $count)
+      $downloadedBytes += $count
+      $now = [DateTimeOffset]::UtcNow
+      if (($now - $lastProgressAt).TotalMilliseconds -ge 400) {
+        Write-DownloadProgress $Manifest $downloadedBytes $totalBytes
+        $lastProgressAt = $now
+      }
+    }
+    $outputStream.Flush()
+    Write-DownloadProgress $Manifest $downloadedBytes $totalBytes
+  }
+  finally {
+    if ($outputStream) { $outputStream.Dispose() }
+    if ($inputStream) { $inputStream.Dispose() }
+    if ($response) { $response.Dispose() }
+    $request.Dispose()
+    $client.Dispose()
+    $handler.Dispose()
+  }
+}
+
 function Get-UpdateManifest {
+  Assert-UpdateNotCancelled
   if ($Repository -notmatch '^[0-9A-Za-z_.-]+/[0-9A-Za-z_.-]+$') {
     throw "更新仓库地址无效：$Repository"
   }
@@ -120,6 +245,7 @@ function Get-UpdateManifest {
       -Uri $uri `
       -TimeoutSec $script:CheckTimeoutSec
   }
+  Assert-UpdateNotCancelled
   if ([int]$manifest.schemaVersion -ne 1 -or [string]$manifest.status -ne "published") {
     throw "更新清单尚未发布，请稍后再试"
   }
@@ -165,6 +291,7 @@ function Expand-ZipSafely([string]$ArchivePath, [string]$DestinationPath) {
   $archive = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
   try {
     foreach ($entry in $archive.Entries) {
+      Assert-UpdateNotCancelled
       $target = [System.IO.Path]::GetFullPath((Join-Path $destinationRoot $entry.FullName))
       if (-not $target.StartsWith(
           $destinationPrefix,
@@ -198,6 +325,7 @@ function Expand-ZipSafely([string]$ArchivePath, [string]$DestinationPath) {
 }
 
 function Get-GitHubToken {
+  Assert-UpdateNotCancelled
   $gh = Get-Command gh.exe -ErrorAction SilentlyContinue
   if (-not $gh) {
     return $null
@@ -217,6 +345,7 @@ function Get-GitHubToken {
     -ArgumentList @("auth", "token", "--hostname", "github.com") `
     -TimeoutSeconds $script:GhTimeoutSec `
     -TimeoutMessage "读取 GitHub CLI 令牌超时"
+  Assert-UpdateNotCancelled
   if ($tokenResult.ExitCode -ne 0) {
     return $null
   }
@@ -236,9 +365,13 @@ function Invoke-Download($Manifest) {
   [System.IO.Directory]::CreateDirectory($stagingRoot) | Out-Null
 
   try {
+    Assert-UpdateNotCancelled
     if ($ArtifactArchivePath) {
-      Write-UpdateResult "downloading" @{ manifest = $Manifest }
+      $archiveSize = (Get-Item -LiteralPath $ArtifactArchivePath).Length
+      Write-DownloadProgress $Manifest 0 $archiveSize
       Copy-Item -LiteralPath $ArtifactArchivePath -Destination $archivePath
+      Assert-UpdateNotCancelled
+      Write-DownloadProgress $Manifest $archiveSize $archiveSize
     }
     else {
       Write-UpdateResult "authenticating" @{ manifest = $Manifest }
@@ -252,7 +385,6 @@ function Invoke-Download($Manifest) {
         return
       }
 
-      Write-UpdateResult "downloading" @{ manifest = $Manifest }
       $uri =
         "https://api.github.com/repos/$Repository/actions/artifacts/" +
         "$([string]$Manifest.artifactId)/zip"
@@ -262,14 +394,14 @@ function Invoke-Download($Manifest) {
         "User-Agent" = "MikeKen-Ken-aseprite-bin-updater"
         "X-GitHub-Api-Version" = "2022-11-28"
       }
-      Invoke-WebRequest `
-        -UseBasicParsing `
-        -Headers $headers `
+      Invoke-StreamingDownload `
         -Uri $uri `
-        -OutFile $archivePath `
-        -TimeoutSec $script:DownloadTimeoutSec
+        -Headers $headers `
+        -DestinationPath $archivePath `
+        -Manifest $Manifest
     }
 
+    Assert-UpdateNotCancelled
     Write-UpdateResult "verifying" @{ manifest = $Manifest }
     $expectedDigest = ([string]$Manifest.artifactDigest) -replace '^sha256:', ''
     $actualDigest = (Get-FileHash -Algorithm SHA256 -LiteralPath $archivePath).Hash
@@ -277,8 +409,10 @@ function Invoke-Download($Manifest) {
       throw "构建产物的 SHA-256 完整性校验失败"
     }
 
+    Assert-UpdateNotCancelled
     Write-UpdateResult "extracting" @{ manifest = $Manifest }
     Expand-ZipSafely $archivePath $extractPath
+    Assert-UpdateNotCancelled
     $candidates = @(
       Get-ChildItem -LiteralPath $extractPath -Filter "build-info.json" -Recurse -File |
         Where-Object {
@@ -297,6 +431,7 @@ function Invoke-Download($Manifest) {
       throw "下载的版本与更新清单不一致"
     }
 
+    Assert-UpdateNotCancelled
     Remove-Item -LiteralPath $archivePath -Force
     Write-UpdateResult "downloaded" @{
       manifest = $Manifest
@@ -400,13 +535,19 @@ function Invoke-Apply {
 
 $InstallationDirectory = Get-NormalizedDirectory $InstallationDirectory
 $ResultPath = [System.IO.Path]::GetFullPath($ResultPath)
+if ($CancellationPath) {
+  $CancellationPath = [System.IO.Path]::GetFullPath($CancellationPath)
+}
 
+$scriptExitCode = 0
 try {
   switch ($Mode) {
     "Check" {
+      Assert-UpdateNotCancelled
       Write-UpdateResult "checking"
       $manifest = Get-UpdateManifest
       $localBuild = Get-LocalBuildInfo
+      Assert-UpdateNotCancelled
       if (Test-UpdateAvailable $manifest $localBuild) {
         Write-UpdateResult "update-available" @{ manifest = $manifest }
       }
@@ -415,9 +556,11 @@ try {
       }
     }
     "Download" {
+      Assert-UpdateNotCancelled
       Write-UpdateResult "checking"
       $manifest = Get-UpdateManifest
       $localBuild = Get-LocalBuildInfo
+      Assert-UpdateNotCancelled
       if (-not (Test-UpdateAvailable $manifest $localBuild)) {
         Write-UpdateResult "up-to-date" @{ manifest = $manifest }
       }
@@ -431,6 +574,21 @@ try {
   }
 }
 catch {
-  Write-UpdateResult "error" @{ message = $_.Exception.Message }
-  exit 1
+  if ((Test-UpdateCancelled) -or
+      $_.Exception -is [System.OperationCanceledException]) {
+    Remove-Item -LiteralPath $ResultPath -Force -ErrorAction SilentlyContinue
+    $scriptExitCode = 2
+  }
+  else {
+    Write-UpdateResult "error" @{ message = $_.Exception.Message }
+    $scriptExitCode = 1
+  }
+}
+finally {
+  if ($CancellationPath) {
+    Remove-Item -LiteralPath $CancellationPath -Force -ErrorAction SilentlyContinue
+  }
+}
+if ($scriptExitCode -ne 0) {
+  exit $scriptExitCode
 }

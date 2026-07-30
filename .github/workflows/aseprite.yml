@@ -22,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  ASEPRITE_PACKAGE_REVISION: "5"
+  ASEPRITE_PACKAGE_REVISION: "6"
 
 jobs:
   build:
@@ -171,6 +171,11 @@ jobs:
           "- 包修订：``$packageRevision``" >> $env:GITHUB_STEP_SUMMARY
           "- 是否构建：$buildLabel" >> $env:GITHUB_STEP_SUMMARY
           "- 原因：$reason" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Test updater
+        if: steps.version.outputs.should_build == 'true'
+        shell: pwsh
+        run: ./scripts/Test-AsepriteUpdater.ps1
 
       - name: Build
         if: steps.version.outputs.should_build == 'true'
