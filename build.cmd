@@ -2,6 +2,7 @@
 setlocal enabledelayedexpansion
 
 set PATH="C:\Program Files\7-Zip";%PATH%
+if "%ASEPRITE_PACKAGE_REVISION%" equ "" set ASEPRITE_PACKAGE_REVISION=5
 
 where /q git.exe || (
   echo ERROR: "git.exe" not found
@@ -76,6 +77,15 @@ call git -C aseprite submodule update --init --recursive                        
 
 python -c "v = open('aseprite/src/ver/CMakeLists.txt').read(); open('aseprite/src/ver/CMakeLists.txt', 'w').write(v.replace('1.x-dev', '%ASEPRITE_VERSION%'[1:]))"
 
+pwsh.exe -NoLogo -NoProfile -File scripts\Set-AsepriteAboutVersion.ps1 ^
+  -AsepriteSourceDirectory "aseprite"                                  ^
+  -PackageRevision "%ASEPRITE_PACKAGE_REVISION%"                       ^
+  -UpdaterPackagePath "assets\updater-extension\package.json"
+if errorlevel 1 (
+  echo failed to add Chinese enhanced package version to About
+  exit /b 1
+)
+
 
 rem *** download skia
 
@@ -130,7 +140,6 @@ xcopy /E /Q /Y aseprite\docs aseprite-%ASEPRITE_VERSION%\docs\
 xcopy /E /Q /Y build\bin\aseprite.exe aseprite-%ASEPRITE_VERSION%\
 xcopy /E /Q /Y build\bin\data aseprite-%ASEPRITE_VERSION%\data\
 
-if "%ASEPRITE_PACKAGE_REVISION%" equ "" set ASEPRITE_PACKAGE_REVISION=4
 if "%ASEPRITE_UPDATE_REPOSITORY%" equ "" set ASEPRITE_UPDATE_REPOSITORY=MikeKen-Ken/aseprite-bin
 
 pwsh.exe -NoLogo -NoProfile -File scripts\Integrate-ChineseDefaults.ps1 ^
