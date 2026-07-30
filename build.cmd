@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 set PATH="C:\Program Files\7-Zip";%PATH%
-if "%ASEPRITE_PACKAGE_REVISION%" equ "" set ASEPRITE_PACKAGE_REVISION=8
+if "%ASEPRITE_PACKAGE_REVISION%" equ "" set ASEPRITE_PACKAGE_REVISION=9
 
 where /q git.exe || (
   echo ERROR: "git.exe" not found

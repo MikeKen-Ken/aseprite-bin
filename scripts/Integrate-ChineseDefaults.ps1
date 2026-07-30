@@ -15,7 +15,7 @@ param(
   [string]$ThemeArchivePath = "",
   [string]$GitHubToken = $env:GH_TOKEN,
   [ValidateRange(1, 2147483647)]
-  [int]$PackageRevision = 8,
+  [int]$PackageRevision = 9,
   [string]$UpdateRepository = "MikeKen-Ken/aseprite-bin"
 )
 
