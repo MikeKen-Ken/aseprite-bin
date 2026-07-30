@@ -102,6 +102,10 @@ function Invoke-ExternalWithTimeout {
         throw $TimeoutMessage
       }
     }
+    # WaitForExit(timeout) can return before redirected file handles finish
+    # flushing. The parameterless call is immediate after process exit and
+    # guarantees that gh auth token output is complete before we read it.
+    $process.WaitForExit()
     $stdout = (Get-Content -Raw -LiteralPath $stdoutPath -ErrorAction SilentlyContinue)
     $stderr = (Get-Content -Raw -LiteralPath $stderrPath -ErrorAction SilentlyContinue)
     return [pscustomobject]@{
@@ -173,7 +177,7 @@ function Invoke-StreamingDownload {
       Start-Sleep -Milliseconds 250
     }
     $response = $responseTask.GetAwaiter().GetResult()
-    $response.EnsureSuccessStatusCode()
+    $response.EnsureSuccessStatusCode() | Out-Null
     $totalBytes = $response.Content.Headers.ContentLength
     $inputStream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
     $outputStream = [System.IO.File]::Create($DestinationPath)
@@ -331,22 +335,16 @@ function Get-GitHubToken {
     return $null
   }
 
-  $status = Invoke-ExternalWithTimeout `
-    -FilePath $gh.Source `
-    -ArgumentList @("auth", "status", "--hostname", "github.com") `
-    -TimeoutSeconds $script:GhTimeoutSec `
-    -TimeoutMessage "检查 GitHub CLI 登录状态超时"
-  if ($status.ExitCode -ne 0) {
-    return $null
-  }
-
   $tokenResult = Invoke-ExternalWithTimeout `
     -FilePath $gh.Source `
     -ArgumentList @("auth", "token", "--hostname", "github.com") `
     -TimeoutSeconds $script:GhTimeoutSec `
     -TimeoutMessage "读取 GitHub CLI 令牌超时"
   Assert-UpdateNotCancelled
-  if ($tokenResult.ExitCode -ne 0) {
+  # Windows PowerShell 5 can leave Start-Process.ExitCode unset even after
+  # the process exits. A non-empty token is authoritative; when an exit code
+  # is available, still reject explicit failures.
+  if ($null -ne $tokenResult.ExitCode -and $tokenResult.ExitCode -ne 0) {
     return $null
   }
   $token = $tokenResult.StandardOutput.Trim()
