@@ -144,3 +144,7 @@ finally {
       -ErrorAction SilentlyContinue
   }
 }
+
+# The cancellation case intentionally returns code 2. Reset it after all
+# assertions pass so GitHub Actions receives the test suite's real outcome.
+exit 0
