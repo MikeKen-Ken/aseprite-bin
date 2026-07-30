@@ -15,7 +15,7 @@ param(
   [string]$ThemeArchivePath = "",
   [string]$GitHubToken = $env:GH_TOKEN,
   [ValidateRange(1, 2147483647)]
-  [int]$PackageRevision = 7,
+  [int]$PackageRevision = 8,
   [string]$UpdateRepository = "MikeKen-Ken/aseprite-bin"
 )
 
@@ -192,6 +192,9 @@ selected = $selectedTheme
   Copy-Item `
     -LiteralPath (Join-Path $RepositoryRoot "scripts/cleanup-update-source.ps1") `
     -Destination (Join-Path $OutputDirectory "cleanup-update-source.ps1")
+  Copy-Item `
+    -LiteralPath (Join-Path $RepositoryRoot "scripts/login-github.cmd") `
+    -Destination (Join-Path $OutputDirectory "login-github.cmd")
   $updaterHelperSource =
     Join-Path $RepositoryRoot "scripts/Invoke-AsepriteUpdate.ps1"
   $updaterHelperDestination =

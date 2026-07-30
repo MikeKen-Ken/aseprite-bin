@@ -86,8 +86,9 @@
 `aseprite.ini` 和已有用户文件会保留。
 
 > [!NOTE]
-> Actions 产物需要 GitHub 身份验证。第一次使用前安装
-> [GitHub CLI](https://cli.github.com/)，并运行一次 `gh auth login`。
+> Actions 产物需要 GitHub 身份验证。第一次下载需要登录时，
+> 更新器会自动打开验证窗口和浏览器。电脑仍需先安装
+> [GitHub CLI](https://cli.github.com/)。
 
 ### 下载失败怎么办？
 

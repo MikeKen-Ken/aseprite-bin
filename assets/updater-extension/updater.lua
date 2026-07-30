@@ -65,6 +65,10 @@ local function helperPath()
   return app.fs.joinPath(installationDirectory, "Invoke-AsepriteUpdate.ps1")
 end
 
+local function loginHelperPath()
+  return app.fs.joinPath(installationDirectory, "login-github.cmd")
+end
+
 local function pathKey(value)
   local hash = 0
   local normalized = tostring(value):lower()
@@ -273,6 +277,55 @@ local function showError(message)
   }
 end
 
+local function launchGitHubLogin()
+  local path = loginHelperPath()
+  if not app.fs.isFile(path) then
+    return false
+  end
+  local command =
+    'cmd.exe /c start "" ' .. quoteCommandArgument(path)
+  local ok = os.execute(command)
+  return ok == true or ok == 0
+end
+
+local function showGitHubLogin(onRetry)
+  closeActiveDialog()
+  if not launchGitHubLogin() then
+    showError(
+      "无法打开 GitHub 登录窗口。\n\n" ..
+      "请确认当前便携版包含 login-github.cmd。")
+    return
+  end
+  app.tip("GitHub 登录窗口已自动打开，请在浏览器中完成验证。", 5)
+  activeDialog = Dialog{
+    title = "需要登录 GitHub",
+    resizeable = false
+  }
+  activeDialog
+    :label{
+      text = "下载 Actions 构建产物需要 GitHub 身份验证。"
+    }
+    :label{
+      text = "登录窗口和浏览器已经自动打开，请按页面提示完成验证。"
+    }
+    :button{
+      id = "retry",
+      text = "登录完成，继续下载",
+      onclick = function()
+        closeActiveDialog()
+        onRetry()
+      end
+    }
+    :button{
+      id = "cancel",
+      text = "取消",
+      onclick = function()
+        closeActiveDialog()
+      end
+    }
+    :show{ wait = false }
+end
+
 local function showBusyAlert()
   app.alert{
     title = "中文增强版更新",
@@ -427,10 +480,7 @@ local function startDownload()
         buttons = "确定"
       }
     elseif result.status == "auth-required" then
-      showError(
-        "下载 Actions 产物需要 GitHub 登录。\n\n" ..
-        "请先在终端运行：gh auth login\n" ..
-        "登录完成后再次点击“检查更新”。")
+      showGitHubLogin(startDownload)
     else
       showError(result.message)
     end
