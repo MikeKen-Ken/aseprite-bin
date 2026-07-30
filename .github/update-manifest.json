@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
   "status": "published",
-  "buildKey": "v1.3.18.1|0.1.15|exact|v1.3.18.1|pkg:4",
-  "packageRevision": 4,
+  "buildKey": "v1.3.18.1|0.1.15|exact|v1.3.18.1|pkg:5",
+  "packageRevision": 5,
   "asepriteVersion": "v1.3.18.1",
   "chineseRelease": "0.1.15",
   "chineseMatchMode": "exact",
   "chineseSupportedAsepriteVersion": "v1.3.18.1",
-  "artifactId": 8745343340,
+  "artifactId": 8745891776,
   "artifactName": "aseprite-v1.3.18.1-zh-0.1.15-boutique",
-  "artifactUrl": "https://github.com/MikeKen-Ken/aseprite-bin/actions/runs/30505165476/artifacts/8745343340",
-  "artifactDigest": "sha256:cdbf5e294c7fdca599d9cd1bb0130111eba4bef3c8ba566b57a4b85ef7d40fda",
-  "workflowRunId": 30505165476,
-  "sourceCommit": "6ee4f09d5691de499e6b4863f47c41e64ac55976",
-  "publishedAt": "2026-07-30T01:35:38.1130114+00:00",
-  "expiresAt": "2026-10-27T01:35:38.1130114+00:00"
+  "artifactUrl": "https://github.com/MikeKen-Ken/aseprite-bin/actions/runs/30506605440/artifacts/8745891776",
+  "artifactDigest": "sha256:959611ca7bcfed030c7632bbee7297cca6a8bb51cb807b6eba0a8e890ffb8f44",
+  "workflowRunId": 30506605440,
+  "sourceCommit": "f1c90b266573d4d59e3308ffe812489a3913e09e",
+  "publishedAt": "2026-07-30T02:06:48.6448153+00:00",
+  "expiresAt": "2026-10-27T02:06:48.6448153+00:00"
 }
